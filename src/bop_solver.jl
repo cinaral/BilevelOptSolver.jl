@@ -2,8 +2,8 @@
 2025-05-06 Andrew
 
 Assume, 
-F: X->R, 
-f: X->R, 
+F: Rⁿ¹->R, 
+f: Rⁿ²->R, 
 G: X->Rᵐ¹, 
 g: X->Rᵐ², 
 are all continuous and twice differentiable.
