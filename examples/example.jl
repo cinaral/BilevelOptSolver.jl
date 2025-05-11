@@ -43,7 +43,7 @@ sol = solve_bop(bop)
 
 """
 TODO 2025-05-11:  
-1. merge into repo and clear commits
+1. merge into repo and clear commits DONE
 2. fix bop type instability DONE
 3. fix feas LP
 4. test on BOLIP

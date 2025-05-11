@@ -9,9 +9,9 @@ G: X->Rᵐ¹,
 g: X->Rᵐ², 
 are all continuous and twice differentiable.
 
-Bilevel Optimization Problem (BOP), Standard (Optimistic):
+Bilevel Optimization Problem (BOP), Standard (Optimistic), let x=[x₁;x₂]:
 min     F(x)
- x
+x
 s.t.    x₁ ∈ Rⁿ¹
         G(x) ≥ 0                                            (BOP)
         x₂ ∈ S := { x₂ : x₂ ∈ arg min   f(x₁, y) 

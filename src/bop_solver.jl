@@ -14,7 +14,7 @@ n = n₁ + n₂
 ____Bilevel Optimization Problem (BOP), Standard (Optimistic):____
 min     F(x)
  x
-s.t.    x₁ ∈ X₁
+s.t.    x₁ ∈ Rⁿ¹
         G(x) ≥ 0                                            (BOP)
         x₂ ∈ S := { x₂ : x₂ ∈ arg min   f(x₁, y) 
                                  y   
@@ -23,13 +23,13 @@ s.t.    x₁ ∈ X₁
 __________________________________________________________________
 
 Consider H ⊂ S under Slater's constraint qualifications (NOTE: ∇ₓ₂ is Λ_x₂, not ∇²ₓ):
-    {    x₂ ∈ X₂: ∃λ ∈ Rᵐ²           } 
+    {    x₂ ∈ Rⁿ²: ∃λ ∈ Rᵐ²           } 
 H = {    ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x)) = 0   }    
     {    g(x) ≥ 0 ⟂ λ ≥ 0            }
 
 
 We can replace the complementarity constraints for all i ∈ {1, …, 2ᵐ}:
-                {  x₂ ∈ X₂: ∃λ ∈ Rᵐ²         }
+                {  x₂ ∈ Rⁿ²: ∃λ ∈ Rᵐ²         }
 H = ∪ Hᵢ :=     { ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x)) = 0  }   
     i           { gⱼ(x) ≥ 0, λⱼ = 0, j ∈ J⁻ᵢ  }           
                 { gⱼ(x) = 0, λⱼ ≥ 0, j ∈ J⁺ᵢ  }, 
@@ -43,7 +43,7 @@ J⁺ᵢ ≠ J⁺ₖ, i ≠ k
 ____Sub Bilevel Optimization Problem (BOPᵢ):____                                      
 min     F(x)
 x,λ,s
-s.t.    x₁ ∈ X₁         (BOPᵢ)
+s.t.    x₁ ∈ Rⁿ¹         (BOPᵢ)
         G(x) ≥ 0
         x₂ ∈ Hᵢ
 ________________________________________________
@@ -592,11 +592,11 @@ end
 KKT conditions for BOPᵢ is:
     ∇ᵥF(x) - Λ₁ᵀ ∇ᵥG(x) - Λₕᵀ ∇ᵥh(v) = 0  
                    G(x) ≥ 0  (no Λ dependency)              
-                     Λ₁ ≥ 0
+                     Λ₁ 
                Λ₁ᵀ G(x) ≥ 0
                    h(v) ≥ 0  (no Λ dependency)
               0 ≥ hⱼ(v)    , j∈J⁻ᵢ  (no Λ dependency)             
-                     Λₕⱼ ≥ 0
+                     Λₕⱼ 
                  0 ≥ Λₕⱼ    , j∈J⁺ᵢ  
                 Λₕᵀ h(v) ≥ 0  (already taken care of)
 
@@ -671,7 +671,7 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         a_start = A.colptr[1:end-1] .- 1
         a_index = A.rowval .- 1
         a_value = A.nzval
-        
+
         n_col = convert(Cint, size(col_cost, 1))
         n_row = convert(Cint, size(row_lower, 1))
         n_nz = convert(Cint, size(a_index, 1))
