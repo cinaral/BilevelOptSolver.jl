@@ -48,10 +48,10 @@ s.t.    x₁ ∈ Rⁿ¹         (BOPᵢ)
         x₂ ∈ Hᵢ
 ________________________________________________
 
-Let's define                                                      Λₕ := [x; λ; s] 
-                [ ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x))  ] = 0                        -∞ ≤ x₂ ≤ ∞    
-h(x, λ, s) :=   [      g(x, y) - s       ] = 0              ⟂         -∞ ≤ λ ≤ ∞  
-                [        λ               ] ≥/=? 0                      0 ≤ s ≤ s_ubᵢ  (upper bounds depend on i)  
+x₂ ∈ Hᵢ is tricky due to the complamentarity constraints Let v := [x; λ; s], we define: h(v) ⟂ z := [x; λ; s] (aka Λₕ)
+          [ ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x))  ] = 0                        -∞ ≤ x₂ ≤ ∞    
+h(v) :=   [      g(x, y) - s       ] = 0              ⟂         -∞ ≤ λ ≤ ∞  
+           [        λ               ] ≥/=? 0                     0 ≤ s ≤ s_ubᵢ  (upper bounds depend on i)  
 
 So now we can replace x₂ ∈ Hᵢ with the following constraints for BOPᵢ:
 h(x, λ, s) ≥ 0
@@ -95,8 +95,9 @@ struct BilevelOptProb # do I need to parematrize by type of functions?
     nᵥ::Int  # nₓ + m₂ + m₂, length(v)
     m::Int   # m₁ + mₕ, length(Λ) = length([G(v); h(v)])
     mₕ::Int   # n₂ + m₂ + m₂, length(h(v))
-    eval_h!::Function    # eval_h!(out, v)
-    eval_∇ᵥh             # (; shape, rows, cols, vals!(out, v))
+    Λₕ_lb::Vector{Float64}
+    Λₕ_ub::Vector{Float64}
+    eval_F::Function     # F(v)
     eval_Gh!::Function   # [G(v); h(v)], (; shape, rows, cols, vals!(out, v))
     eval_∇ᵥF!::Function  # eval_∇ᵥF!(out, v)
     eval_∇ᵥGh            # (; shape, rows, cols, vals!(out, v))
@@ -138,17 +139,16 @@ function construct_bop(n₁, n₂, F, G, f, g)
     v = [x_sym; λ_sym; s_sym]
     @assert(nᵥ == length(v))
 
-    #Main.@infiltrate
     ∇ₓ₂f = Symbolics.gradient(f_sym, x₂)
     ∇ₓ₂g = Symbolics.sparsejacobian(g_sym, x₂)
     h = [∇ₓ₂f - ∇ₓ₂g' * λ_sym; g_sym - s_sym; λ_sym]
     @assert(mₕ == length(h))
-    eval_h! = Symbolics.build_function(h, v; expression=Val{false})[2]
 
-    ∇ᵥh = Symbolics.sparsejacobian(h, v)
-    (∇ᵥh_rows, ∇ᵥh_cols, ∇ᵥh_vals) = SparseArrays.findnz(∇ᵥh)
-    ∇ᵥh_vals! = Symbolics.build_function(∇ᵥh_vals, v; expression=Val{false})[2]
-    eval_∇ᵥh = (; shape=size(∇ᵥh), rows=∇ᵥh_rows, cols=∇ᵥh_cols, vals=∇ᵥh_vals!)
+    # h(v) ⟂ Λₕ_lb ≤ Λₕ ≤ Λₕ_ub
+    Λₕ_lb = [fill(-Inf, n₂); fill(-Inf, m₂); zeros(m₂)]
+    Λₕ_ub = [fill(Inf, n₂); fill(Inf, m₂); fill(Inf, m₂)]
+
+    eval_F = Symbolics.build_function(F_sym, v; expression=Val{false})
 
     Gh = [G_sym; h] # BOPᵢ constraints
     @assert(m == length(Gh))
@@ -158,18 +158,22 @@ function construct_bop(n₁, n₂, F, G, f, g)
     eval_∇ᵥF! = Symbolics.build_function(∇ᵥF, v; expression=Val{false})[2]
 
     ∇ᵥGh = Symbolics.sparsejacobian(Gh, v)
+
     (∇ᵥGh_rows, ∇ᵥGh_cols, ∇ᵥGh_vals) = SparseArrays.findnz(∇ᵥGh)
     eval_∇ᵥGh_vals! = Symbolics.build_function(∇ᵥGh_vals, v; expression=Val{false})[2]
     eval_∇ᵥGh = (; shape=size(∇ᵥGh), rows=∇ᵥGh_rows, cols=∇ᵥGh_cols, vals=eval_∇ᵥGh_vals!)
 
-    Λ_sym = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
+    Λ₁_sym = Symbolics.@variables(Λ[1:m₁])[1] |> Symbolics.scalarize
+    Λ = [Λ₁_sym; v[n₁+1:end]] # this may be unnecessary
     obj_factor = Symbolics.@variables(σf)[1]
-    L = obj_factor * f_sym + Gh' * Λ_sym # WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥ[G(v); h(v)]
+    L = obj_factor * F_sym + Gh' * Λ # WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥ[G(v); h(v)]
     ∇ᵥL = Symbolics.gradient(L, v)
     ∇²ᵥL = Symbolics.sparsejacobian(∇ᵥL, v)
     (∇²ᵥL_rows, ∇²ᵥL_cols, ∇²ᵥL_vals) = SparseArrays.findnz(∇²ᵥL)
-    eval_∇²ᵥL_vals! = Symbolics.build_function(∇²ᵥL_vals, v, obj_factor, Λ_sym; expression=Val{false})[2]
+    eval_∇²ᵥL_vals! = Symbolics.build_function(∇²ᵥL_vals, v, obj_factor, Λ; expression=Val{false})[2]
     eval_∇²ᵥL = (; shape=size(∇²ᵥL), rows=∇²ᵥL_rows, cols=∇²ᵥL_cols, vals=eval_∇²ᵥL_vals!) # hessian of L
+
+    # 2025-05-11 TODO: ∇ᵥF - ∇ᵥGh' * Λ  has non-zero parts...
 
     # used for solving follower's NLP
     eval_g! = Symbolics.build_function(g_sym, x_sym; expression=Val{false})[2]
@@ -198,7 +202,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
     eval_∇ₓGg = (; shape=size(∇ₓGg), rows=∇ₓGg_rows, cols=∇ₓGg_cols, vals=eval_∇ₓGg_vals!)
 
     Λf_sym = Symbolics.@variables(Λf[1:m₁+m₂])[1] |> Symbolics.scalarize
-    L_feas = Λf_sym' * Gg # WARN: IPOPT convention: λᵀ ∇²ₓ₂ g(x) because no cost
+    L_feas = Λf_sym' * Gg # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
     ∇ₓL_feas = Symbolics.gradient(L_feas, x_sym)
     ∇²ₓL_feas = Symbolics.sparsejacobian(∇ₓL_feas, x_sym)
     (∇²ₓL_feas_rows, ∇²ₓL_feas_cols, ∇²ₓL_feas_vals) = SparseArrays.findnz(∇²ₓL_feas)
@@ -218,8 +222,9 @@ function construct_bop(n₁, n₂, F, G, f, g)
         nᵥ,
         m,
         mₕ,
-        eval_h!,
-        eval_∇ᵥh,
+        Λₕ_lb,
+        Λₕ_ub,
+        eval_F,
         eval_Gh!,
         eval_∇ᵥF!,
         eval_∇ᵥGh,
@@ -250,9 +255,8 @@ function solve_bop(bop; x₁_init=zeros(bop.n₁), x₂_init=zeros(bop.n₂), to
         v = [x; λ; s]
     catch
         # first solve the bilevel feasibility problem, then solve the follower's problem
-        #@info "x₁_init is not feasible, solving the bilevel feasibility problem"
         x₁, x₂ = find_bilevel_feas_pt(bop; x_init)
-        #@info "x_init set to $([x₁; x₂])"
+        @warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
         x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
         x = [x₁; x₂]
         v = [x; λ; s]
@@ -277,12 +281,17 @@ function solve_bop(bop; x₁_init=zeros(bop.n₁), x₂_init=zeros(bop.n₂), to
         #x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
         #x = [x₁; x₂]
         #v = [x; λ; s]
-        feasible_J = find_feas_index_sets(bop, v)
+
+        feasible_J = find_follow_feas_ind_sets(bop, v)
 
         for Ji in feasible_J
             # TODO 2025-05-11 FIX solve_Λ_feas
-            sol = solve_Λ_feas(v, Ji)
-            if sol.is_solved @warn "I actually work sometimes" end 
+            v, Λ = solve_BOPᵢ_nlp(Ji; v_init=v)
+            sol = solve_Λ_feas(v, Ji, Λ)
+            #Main.@infiltrate
+            if sol.is_solved
+                @warn "I actually work sometimes"
+            end
 
             if !sol.is_solved
                 v, Λ = solve_BOPᵢ_nlp(Ji; v_init=v)
@@ -318,45 +327,46 @@ end
 
 
 """
-Check viable ways to satisfy h ⟂ Λₕ  
+Check viable ways to satisfy h ⟂ z (aka Λₕ)
 
-This function constructs:
-K[1] = { j : hⱼ(v) > 0, Λₕⱼ = 0 } (case 1: inactive, J-ᵢ)
-K[2] = { j : hⱼ(v) = 0, Λₕⱼ = 0 } (case 1 or 2: ambiguous)
-K[3] = { j : hⱼ(v) = 0, Λₕⱼ > 0 } (case 2: active, J+ᵢ) 
+This function constructs, j∈{1,…,mₕ}:
+        { j: hⱼ > 0, l = Λₕⱼ    } case 1  : hⱼ inactive (positive), Λₕⱼ at lb
+        { j: hⱼ = 0, l = Λₕⱼ    } case 1/2: ambiguous
+K[j] =  { j: hⱼ = 0, l < Λₕⱼ < u} case 2  : hⱼ active (l ≠ u)
+        { j: hⱼ = 0,     Λₕⱼ = u} case 2/3: ambiguous 
+        { j: hⱼ < 0,     Λₕⱼ = u} case 3  : hⱼ inactive (negative), Λₕⱼ at ub
+        { j: hⱼ,     l = Λₕⱼ = u} case 4  : hⱼ free, Λₕⱼ fixed
 
-Then expands ambiguous cases and creates J from K
-e.g.
-K = Dict{Int64, Vector{Int64}} with 3 entries:
-    1 => [1]
-    2 => [1, 2] <- ambiguous (multiples)
-    3 => [2]
-
-J = resolve_ambiguous_index_sets(K)
-2-element Vector{Dict{Int64, Set{Int64}}}:
-    Dict(2 => Set([3]), 1 => Set([2, 1]))
-    Dict(2 => Set([2, 3]), 1 => Set([1]))
+Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3] and J[4]
 """
-function find_feas_index_sets(bop, v; tol=1e-3)
-    h = zeros(bop.mₕ)
-    bop.eval_h!(h, v)
+function find_follow_feas_ind_sets(bop, v; tol=1e-3)
+    Gh = zeros(bop.m)
+    bop.eval_Gh!(Gh, v)
+    h = @view Gh[bop.m₁+1:end]
 
-    Λₕ = v[bop.n₁+1:end]
-
-    # which indexes could go into J[1] and/or J[2]
+    Λₕ = v[bop.n₁+1:end] # aka z
+    l = bop.Λₕ_lb
+    u = bop.Λₕ_ub
     K = Dict{Int,Vector{Int}}()
 
     # note which constraints are active
     for j in 1:bop.mₕ
         Kj = Int[]
 
-        if h[j] > tol && tol ≥ Λₕ[j] # case 1 inactive
-            push!(Kj, 1) # J[1] candidate
-        elseif tol ≥ h[j] && tol ≥ Λₕ[j]  # case 1, 2
-            push!(Kj, 1) # J[1] candidate
-            push!(Kj, 2) # J[2] candidate
-        elseif tol ≥ h[j] && Λₕ[j] > tol # case 2 active
-            push!(Kj, 2) # J[2] candidate
+        if isapprox(l[j], u[j]; atol=2 * tol)
+            push!(Kj, 4) # case 4
+        elseif tol ≤ h[j] && Λₕ[j] < l[j] + tol
+            push!(Kj, 1) # case 1
+        elseif -tol < h[j] < tol && Λₕ[j] < l[j] + tol
+            push!(Kj, 1) # case 1 OR  
+            push!(Kj, 2) # case 2
+        elseif -tol < h[j] < tol && l[j] + tol ≤ Λₕ[j] ≤ u[j] - tol
+            push!(Kj, 2) # case 2
+        elseif -tol < h[j] < tol && u[j] - tol < Λₕ[j]
+            push!(Kj, 2) # case 2 OR 
+            push!(Kj, 3) # case 3
+        elseif h[j] ≤ tol && u[j] - tol < Λₕ[j]
+            push!(Kj, 2) # case 3
         end
         K[j] = Kj
     end
@@ -366,23 +376,57 @@ function find_feas_index_sets(bop, v; tol=1e-3)
         throw(error("not a valid solution"))
     end
 
-    J = Vector{Dict{Int,Set{Int}}}()
-    K_len = length(K)
-    multiples = [i for i in 1:K_len if length(K[i]) > 1]
-    singles = setdiff(1:K_len, multiples)
-    It = Iterators.product([K[i] for i in multiples]...)
+    # enumerate the ambiguous indexes
+    Js = Vector{Dict{Int,Set{Int}}}()
+    ambigu_inds = [i for i in 1:bop.mₕ if length(K[i]) > 1]
+    single_inds = setdiff(1:bop.mₕ, ambigu_inds)
+    It = Iterators.product([K[i] for i in ambigu_inds]...)
 
     for assignment in It
-        JJ = Dict(j => Set{Int}() for j in 1:2)
-        for (e, ej) in enumerate(assignment)
-            push!(JJ[ej], multiples[e])
+        J = Dict(k => Set{Int}() for k in 1:4) # number of cases = 4
+        for (j, ej) in enumerate(assignment)
+            push!(J[ej], ambigu_inds[j])
         end
-        for e in singles
-            push!(JJ[K[e][1]], e)
+        for j in single_inds
+            push!(J[K[j][1]], j)
         end
-        push!(J, JJ)
+        push!(Js, J)
     end
-    J
+    Js
+end
+
+function convert_J_to_bounds(J, bop)
+    h_lb = zeros(bop.mₕ)
+    h_ub = zeros(bop.mₕ)
+    Λₕ_lb = zeros(bop.mₕ)
+    Λₕ_ub = zeros(bop.mₕ)
+
+    for j in J[1] # hⱼ inactive (positive), Λₕⱼ at lb
+        h_lb[j] = 0.0
+        h_ub[j] = Inf
+        Λₕ_lb[j] = bop.Λₕ_lb[j]
+        Λₕ_ub[j] = bop.Λₕ_lb[j]
+    end
+    for j in J[2] # hⱼ active (l ≠ u)
+        h_lb[j] = 0.0
+        h_ub[j] = 0.0
+        Λₕ_lb[j] = bop.Λₕ_lb[j]
+        Λₕ_ub[j] = bop.Λₕ_ub[j]
+    end
+    for j in J[3] # hⱼ inactive (negative), Λₕⱼ at ub
+        h_lb[j] = -Inf
+        h_ub[j] = 0.0
+        Λₕ_lb[j] = bop.Λₕ_ub[j]
+        Λₕ_ub[j] = bop.Λₕ_ub[j]
+    end
+    for j in J[4] # hⱼ free, Λₕⱼ fixed
+        h_lb[j] = -Inf
+        h_ub[j] = Inf
+        Λₕ_lb[j] = bop.Λₕ_lb[j]
+        Λₕ_ub[j] = bop.Λₕ_ub[j]
+    end
+
+    (; h_lb, h_ub, Λₕ_lb, Λₕ_ub)
 end
 
 """
@@ -479,7 +523,8 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
 
     x₂ = ipopt_prob.x
     λ = -ipopt_prob.mult_g # convention change!!
-    s = -bop.g([x₁; x₂])
+    s = bop.g([x₁; x₂])
+
     (; x₂, λ, s, solvestat)
 end
 
@@ -495,17 +540,17 @@ s.t.    G(x) ≥ 0
         s_ubᵢ ≥ s ≥ 0
 """
 function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
+    # these will be overwritten wrt Js, but only the follower's Λₕ=[x₂;λ;s] and h
     v_lb = [fill(-Inf, bop.nₓ); zeros(bop.m₂ + bop.m₂)]
-    v_ub = fill(Inf, bop.nᵥ) # will be overwritten wrt Js
-    Gh_lb = fill(0.0, bop.m)
-    Gh_ub = fill(Inf, bop.m) # will be overwritten wrt Js
+    v_ub = fill(Inf, bop.nᵥ)
+    Gh_lb = [fill(0, bop.m₁); zeros(bop.mₕ)]
+    Gh_ub = fill(Inf, bop.m)
 
     nele_jac_g = length(bop.eval_∇ᵥGh.rows)
     nele_hess = length(bop.eval_∇²ᵥL.rows)
 
     function eval_f(v::Vector{Float64})
-        x = @view v[1:bop.nₓ]
-        bop.F(x)
+        bop.eval_F(v)
     end
 
     function eval_Gh(v::Vector{Float64}, Gh::Vector{Float64})
@@ -513,8 +558,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     end
 
     function grad_F(v::Vector{Float64}, grad_F::Vector{Float64})
-        x = @view v[1:bop.nₓ]
-        bop.eval_∇ᵥF!(grad_F, x)
+        bop.eval_∇ᵥF!(grad_F, v)
     end
 
     function jac_Gh(v::Vector{Float64}, rows::Vector{Int32}, cols::Vector{Int32}, vals::Union{Nothing,Vector{Float64}})
@@ -543,15 +587,12 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     end
 
     function solve(Ji; v_init=zeros(n))
-        for j in Ji[1] # inactive Λₕ = [x₂; λ; s]ⱼ = 0, j ∈ j∈J⁻ᵢ  
-            v_ub[bop.n₁+j] = 0
-            #  Gh_ul[bop.m₁+j] = tol?
-        end
 
-        for j in Ji[2] # active hⱼ = 0, j ∈ j∈J⁺ᵢ  
-            #  v_lb[bop.n₁+j] = tol?
-            Gh_ub[bop.m₁+j] = 0
-        end
+        Ji_bounds = convert_J_to_bounds(Ji, bop)
+        v_lb[bop.n₁+1:end] = Ji_bounds.Λₕ_lb
+        v_ub[bop.n₁+1:end] = Ji_bounds.Λₕ_ub
+        Gh_lb[bop.m₁+1:end] = Ji_bounds.h_lb
+        Gh_ub[bop.m₁+1:end] = Ji_bounds.h_ub
 
         ipopt_prob = Ipopt.CreateIpoptProblem(
             bop.nᵥ,
@@ -590,17 +631,14 @@ end
 
 """
 KKT conditions for BOPᵢ is:
-    ∇ᵥF(x) - Λ₁ᵀ ∇ᵥG(x) - Λₕᵀ ∇ᵥh(v) = 0  
-                   G(x) ≥ 0  (no Λ dependency)              
-                     Λ₁ 
-               Λ₁ᵀ G(x) ≥ 0
-                   h(v) ≥ 0  (no Λ dependency)
-              0 ≥ hⱼ(v)    , j∈J⁻ᵢ  (no Λ dependency)             
-                     Λₕⱼ 
-                 0 ≥ Λₕⱼ    , j∈J⁺ᵢ  
-                Λₕᵀ h(v) ≥ 0  (already taken care of)
+    ∇ᵥF(x) - Λᵀ ∇ᵥGh(v) = 0  
+                    Λ₁  ≥ 0
+               Λ₁ᵀ G(x) = 0
+                    Λₕ bounds depend on convert_J_to_bounds() 
 
-Note that this is practically an LP feasibility problem when x and λ are given, let Λ = [Λ₁; Λₕ]: A Λ = b, Λ ≥ 0 
+Note G(x) ≥ 0 and h(v) ≥ 0 was redacted because it has no Λ dependency, and also Λₕᵀ h(v) because it's manually taken care of using convert_J_to_bounds(). 
+
+This is practically an LP feasibility problem when x and λ are given, let Λ = [Λ₁; Λₕ]: A Λ = b, Λ ≥ 0 
 
 This function interfaces the above LP feasibility problem with HiGHS. HiGHS solves (https://ergo-code.github.io/HiGHS/dev/):
     min     cᵀΛ + d
@@ -633,7 +671,7 @@ a_index = [1, 2, 0, 1, 2]
 a_value = [1.0, 3.0, 1.0, 2.0, 2.0]
 ___________________________________
 """
-function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
+function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=5)
     model = HiGHS.Highs_create()
     HiGHS.Highs_setDoubleOptionValue(model, "primal_feasibility_tolerance",
         primal_feas_tol)
@@ -642,29 +680,43 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
     Gh = zeros(bop.m)
     ∇ᵥF = zeros(bop.nᵥ)
     ∇ᵥGh = sparse(bop.eval_∇ᵥGh.rows, bop.eval_∇ᵥGh.cols, zeros(Cdouble, length(bop.eval_∇ᵥGh.rows)), bop.eval_∇ᵥGh.shape[1], bop.eval_∇ᵥGh.shape[2])
-    h = zeros(bop.mₕ)
-    ∇ᵥh = sparse(bop.eval_∇ᵥh.rows, bop.eval_∇ᵥh.cols, zeros(Cdouble, length(bop.eval_∇ᵥh.rows)), bop.eval_∇ᵥh.shape[1], bop.eval_∇ᵥh.shape[2])
+    #h = zeros(bop.mₕ)
+    #∇ᵥh = sparse(bop.eval_∇ᵥh.rows, bop.eval_∇ᵥh.cols, zeros(Cdouble, length(bop.eval_∇ᵥh.rows)), bop.eval_∇ᵥh.shape[1], bop.eval_∇ᵥh.shape[2])
 
-    function solve(v, Ji)
+    function solve(v, Ji, Λ)
+        # TODO: 2025-05-11 ∇ᵥF -  ∇ᵥGh' * Λ is not zero :( what am I missing???
         bop.eval_Gh!(Gh, v)
         bop.eval_∇ᵥF!(∇ᵥF, v)
         bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
-        bop.eval_h!(h, v)
-        bop.eval_∇ᵥh.vals(∇ᵥh.nzval, v)
+        #bop.eval_h!(h, v)
+        #bop.eval_∇ᵥh.vals(∇ᵥh.nzval, v)
 
         # Reminder: A = [∇ᵥGhᵀ; G(x)ᵀ 0ᵀ], b = [∇ᵥF(x); 0], Aₗ = Aᵤ = b, Λₗ = 0, Λ₁ᵤ = Inf, Λₕᵤⱼ = 0 j∈J⁻ᵢ, Λₕᵤⱼ = Inf j∈J⁺ᵢ       
         # Define the column costs, lower bounds and upper bounds
         col_cost = zeros(bop.m) # feasibility problem
-        col_lower = zeros(bop.m) # Λ ≥ Λₗ = 0
+        col_lower = fill(-Inf, bop.m) # Λ ≥ Λₗ = 0
         col_upper = fill(Inf, bop.m) #  Λᵤ ≥ Λ some need to be set zero based on Ji:
-        for j in Ji[1] # active hⱼ > 0, in j∈J⁺ᵢ, Λₕᵤⱼ = 0 j∈J⁻ᵢ 
-            col_upper[bop.m₁+j] = 0
+        #v_lb = [fill(-Inf, bop.nₓ); zeros(bop.m₂ + bop.m₂)]
+        #v_ub = fill(Inf, bop.nᵥ) 
+        #Gh_lb = [fill(0, bop.m₁); zeros(bop.mₕ)]
+        #Gh_ub = fill(Inf, bop.m)
+
+        Ji_bounds = convert_J_to_bounds(Ji, bop)
+        col_lower[bop.m₁+1:end] = Ji_bounds.Λₕ_lb
+        col_upper[bop.m₁+1:end] = Ji_bounds.Λₕ_ub
+
+        if !all(Gh[bop.m₁+1:end] .≥ Ji_bounds.h_lb .- 1e-6) || !all(Gh[bop.m₁+1:end] .≤ Ji_bounds.h_ub .+ 1e-6) || !all(Λ[bop.m₁+1:end] .≥ Ji_bounds.Λₕ_lb .- 1e-6) || !all(Λ[bop.m₁+1:end] .≤ Ji_bounds.Λₕ_ub .+ 1e-6)
+            @error "invalid solution"
         end
 
+        #Main.@infiltrate
         offset = 0.0 # unused
         # Define the row lower bounds and upper bounds Aₗ = Aᵤ = b
         row_lower = [∇ᵥF; 0]
         row_upper = [∇ᵥF; 0]
+        row_lower[bop.nₓ+1:end] = Ji_bounds.h_lb
+        row_upper[bop.nₓ+1:end] = Ji_bounds.h_ub
+
         # constraint matrix is column-wise:
         G = @view Gh[1:bop.m₁]
         A = vcat(∇ᵥGh', sparse([G' zeros(bop.mₕ)']))
@@ -672,6 +724,11 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         a_index = A.rowval .- 1
         a_value = A.nzval
 
+        # TODO it fails here
+        if !all(A * Λ .≥ row_lower .- 1e-6) || !all(A * Λ .≤ row_upper .+ 1e-6) || !all(Λ .≥ col_lower .- 1e-6) || !all(Λ .≤ col_upper .+ 1e-6)
+            @error "you have a bug here mate"
+        end
+        Main.@infiltrate
         n_col = convert(Cint, size(col_cost, 1))
         n_row = convert(Cint, size(row_lower, 1))
         n_nz = convert(Cint, size(a_index, 1))
@@ -824,7 +881,7 @@ function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10
     solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
     if solvestat != 0
-        throw(error("Failed initialization, follower problem may be infeasible for the given x₁!"))
+        throw(error("Failed finding a bilevel feasible point, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x)."))
     end
 
     x₁ = ipopt_prob.x[1:bop.n₁]

@@ -4,7 +4,6 @@ using Ipopt
 using HiGHS
 using Symbolics
 using SparseArrays
-using Infiltrator
 
 include("bop_solver.jl")
 
