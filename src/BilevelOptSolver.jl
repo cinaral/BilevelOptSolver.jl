@@ -4,6 +4,7 @@ using Ipopt
 using HiGHS
 using Symbolics
 using SparseArrays
+using LinearAlgebra
 
 include("bop_solver.jl")
 
