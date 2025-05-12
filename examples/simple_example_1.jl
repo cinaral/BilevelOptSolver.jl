@@ -1,8 +1,12 @@
 using BilevelOptSolver
 
-n₁ = 1
-n₂ = 1
-n = n₁ + n₂
+include("../src/forrest_solver.jl")
+using .forrest_solver
+using BenchmarkTools
+
+n₁::Int64 = 1
+n₂::Int64 = 1
+n::Int64 = n₁ + n₂
 
 function F(x)
     x₁ = @view x[1:n₁]
@@ -43,7 +47,8 @@ OP1 = forrest_solver.OptimizationProblem(2, 1:1, F, G, zeros(4), fill(Inf, 4))
 OP2 = forrest_solver.OptimizationProblem(2, 1:1, f, g, zeros(1), fill(Inf, 1))
 
 bilevel = [OP1; OP2]
-sol_forrest = @btime forrest_solver.solve(bilevel) 
+out = @btime forrest_solver.solve(bilevel)
+sol_forrest = out[1:n]
 
 @info sol
-@info sol_forrest[1:2]
+@info sol_forrest

@@ -105,6 +105,7 @@ struct BilevelOptProb
     eval_∇ᵥGh            # (; shape, rows, cols, vals!(out, v))
     eval_∇²ᵥL # (; shape, rows, cols, vals!(out, v, σf, Λ = [Λ₁; Λₕ])), WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥGh(v)  
     # used for solving follower's NLP
+    eval_f::Function    # eval_f(x)
     eval_g!::Function    # eval_g!(out, x)
     eval_∇ₓ₂f!::Function # eval_∇ₓ₂f!(out, x)
     eval_∇ₓ₂g            # (; shape, rows, cols, vals!(out, x))
@@ -190,6 +191,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
     eval_∇²ᵥL = (; shape=size(∇²ᵥL), rows=∇²ᵥL_rows, cols=∇²ᵥL_cols, vals=eval_∇²ᵥL_vals!) # hessian of L
 
     # used for solving follower's NLP
+    eval_f = Symbolics.build_function(f_sym, x_sym; expression=Val{false})
     eval_g! = Symbolics.build_function(g_sym, x_sym; expression=Val{false})[2]
     ∇ₓ₂f = Symbolics.gradient(f_sym, x₂)
     eval_∇ₓ₂f! = Symbolics.build_function(∇ₓ₂f, x_sym; expression=Val{false})[2]
@@ -245,6 +247,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
         eval_∇ᵥF!,
         eval_∇ᵥGh,
         eval_∇²ᵥL,
+        eval_f,
         eval_g!,
         eval_∇ₓ₂f!,
         eval_∇ₓ₂g,
@@ -255,16 +258,18 @@ function construct_bop(n₁, n₂, F, G, f, g)
     )
 end
 
-function solve_bop(bop; x₁_init=zeros(bop.n₁), x₂_init=zeros(bop.n₂), tol=1e-6, max_iter=100)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
     iters = 0
     is_all_J_feas = false
     is_converged = false
+
+    x₁_init = x_init[1:bop.n₁]
+    x₂_init = x_init[bop.n₁+1:bop.n₁+bop.n₂]
 
     x::Vector{Float64} = zeros(bop.nₓ)
     λ = zeros(bop.m₂)
     s = zeros(bop.m₂)
     v = zeros(bop.nᵥ)
-    x_init = [x₁_init; x₂_init]
 
     # try to solving the follower's problem for the given x_init first, but this may fail if the feasible set of the follower is empty for x₁_init
     try
@@ -274,7 +279,7 @@ function solve_bop(bop; x₁_init=zeros(bop.n₁), x₂_init=zeros(bop.n₂), to
     catch
         # first solve the bilevel feasibility problem, then solve the follower's problem
         x₁, x₂ = find_bilevel_feas_pt(bop; x_init)
-        #@warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
+        @warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
         x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
         x = [x₁; x₂]
         v = [x; λ; s]
@@ -293,7 +298,7 @@ function solve_bop(bop; x₁_init=zeros(bop.n₁), x₂_init=zeros(bop.n₂), to
     while !is_converged
         iters += 1
 
-        # TODO: this can make it go faster... or slower
+        # WARN: this makes it go super slow
         #x₁ = v[1:bop.n₁]
         #x₂ = v[bop.n₁+1:bop.n₁+bop.n₂]
         #x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
@@ -479,7 +484,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
 
     function eval_f(y::Vector{Float64})
         x = [x₁; y]
-        bop.f(x)
+        bop.eval_f(x)
     end
 
     function eval_g(y::Vector{Float64}, g::Vector{Float64})
@@ -571,7 +576,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     nele_jac_g = length(bop.eval_∇ᵥGh.rows)
     nele_hess = length(bop.eval_∇²ᵥL.rows)
 
-    function eval_f(v::Vector{Float64})
+    function eval_F(v::Vector{Float64})
         bop.eval_F(v)
     end
 
@@ -623,7 +628,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
             Gh_u,
             nele_jac_g,
             nele_hess,
-            eval_f,
+            eval_F,
             eval_Gh,
             grad_F,
             jac_Gh,
@@ -665,15 +670,13 @@ KKT conditions for BOPᵢ is:
 
 Note G(x) ≥ 0 and h(v) ≥ 0 was redacted because it has no Λ dependency, and also Λₕᵀ h(v) because it's manually taken care of using convert_J_to_bounds(). 
 
-This is practically an LP feasibility problem when x and λ are given, let Λ = [Λ₁; Λₕ]: A Λ = b, Λ ≥ 0 
+This is practically an LP feasibility problem when x, λ, and s are given
 
 This function interfaces the above LP feasibility problem with HiGHS. HiGHS solves (https://ergo-code.github.io/HiGHS/dev/):
     min     cᵀΛ + d
      Λ
     s.t.    Λ_l ≤ Λ ≤ Λ_u
             A_l ≤ A Λ ≤ A_u
- 
-So basically: A = [∇ᵥGhᵀ; G(x)ᵀ 0ᵀ], b = [∇ᵥF(x); 0], A_l = A_u = b, Λ_l = 0, Λ₁_u = Inf, Λₕ_uⱼ = 0 j∈J⁻ᵢ, Λₕ_uⱼ = Inf j∈J⁺ᵢ      
 
 Here's a HiGHS encoding example because the API is kinda obscure:
 ______________________________
@@ -729,8 +732,9 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         # Define the row lower bounds and upper bounds A_l = A_u = b
         row_lower = [∇ᵥF; 0]
         row_upper = [∇ᵥF; 0]
-        row_lower[bop.nₓ+1:bop.nₓ+bop.mₕ] = Ji_bounds.h_l
-        row_upper[bop.nₓ+1:bop.nₓ+bop.mₕ] = Ji_bounds.h_u
+        # TODO: verify this
+        row_lower[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_l
+        row_upper[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_u
 
         # constraint matrix is column-wise:
         G = @view Gh[1:bop.m₁]
