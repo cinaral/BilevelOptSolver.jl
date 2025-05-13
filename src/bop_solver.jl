@@ -259,7 +259,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
 end
 
 function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
-    iters = 0
+    iter_count = 0
     is_all_J_feas = false
     is_converged = false
 
@@ -274,29 +274,27 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
     # try to solving the follower's problem for the given x_init first, but this may fail if the feasible set of the follower is empty for x₁_init
     try
         x₂, λ, s = solve_follower_nlp(bop, x₁_init; y_init=x₂_init)
-        x = [x₁_init; x₂]
-        v = [x; λ; s]
+        v = [x₁_init; x₂; λ; s]
     catch
         # first solve the bilevel feasibility problem, then solve the follower's problem
         x₁, x₂ = find_bilevel_feas_pt(bop; x_init)
         @warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
         x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
-        x = [x₁; x₂]
-        v = [x; λ; s]
+        v = [x₁; x₂; λ; s]
     end
 
     # doesn't matter too much it but could happen if try above succeeds
     #if any(bop.G(x) .≤ -tol) || any(bop.g(x) .≤ -tol)
     #    @warn("Initial x is not bilevel feasible!")
     #end
-
+    #Main.@infiltrate
     solve_Λ_feas = setup_Λ_feas_LP(bop)
     solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
 
     prev_v = v
 
     while !is_converged
-        iters += 1
+        iter_count += 1
 
         # WARN: this makes it go super slow
         #x₁ = v[1:bop.n₁]
@@ -305,12 +303,23 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
         #x = [x₁; x₂]
         #v = [x; λ; s]
 
-        follow_feas_J = find_follow_feas_ind_sets(bop, v)
+        follow_feas_Js = find_follow_feas_ind_sets(bop, v)
+        #Main.@infiltrate
         is_all_J_feas = true # is there a feasible Λ for all follower feasible Js?
 
-        for Ji in follow_feas_J
+        if length(follow_feas_Js) > 1
+            @warn "multiple feasible sets detected"
+        end
+
+        for Ji in follow_feas_Js
             Ji_bounds = convert_J_to_bounds(Ji, bop)
-            _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all = [Λ; Λ_v_l; Λ_v_u] for BOPᵢ given v
+
+            is_Λ_feasible = false
+            try
+                _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all = [Λ; Λ_v_l; Λ_v_u] for BOPᵢ given v
+            catch
+                is_Λ_feasible = false
+            end
 
             # if for some J there's no feasible Λ, we need to update v:
             if !is_Λ_feasible
@@ -323,7 +332,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
         if is_all_J_feas
             is_converged = true
 
-            for Ji in follow_feas_J
+            for Ji in follow_feas_Js
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
                 v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
 
@@ -342,11 +351,15 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
             end
         end
 
-        if iters > max_iter
+        if iter_count > max_iter
             @error "Reached max iterations!"
+            break
         end
     end
 
+    if is_converged
+        @info "Success in $iter_count iterations"
+    end
     x = v[1:bop.nₓ]
     λ = v[bop.nₓ+1:bop.nₓ+bop.m₂]
     s = v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
@@ -372,7 +385,7 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
     Gh = zeros(bop.m)
     bop.eval_Gh!(Gh, v)
     h = @view Gh[bop.m₁+1:end]
-    z = @view v[bop.n₁+1:end]
+    z = @view v[bop.n₁+1:end] # bop.v_inds["z"]
     z_l = @view bop.v_l₀[bop.n₁+1:end]
     z_u = @view bop.v_u₀[bop.n₁+1:end]
     K = Dict{Int,Vector{Int}}()
@@ -404,6 +417,9 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
         throw(error("Not a valid solution!"))
     end
 
+    #if any([length(Ki) for Ki in values(K)] .> 1)
+    #    Main.@infiltrate
+    #end
     # enumerate the ambiguous indexes
     Js = Vector{Dict{Int,Set{Int}}}()
     ambigu_inds = [i for i in 1:bop.mₕ if length(K[i]) > 1]
@@ -420,6 +436,7 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
         end
         push!(Js, J)
     end
+    #Main.@infiltrate
     Js
 end
 
