@@ -1,8 +1,10 @@
+using BilevelOptSolver
 # MitsosBarton2006Ex328using BilevelOptSolver
 
 include("../src/forrest_solver.jl")
 using .forrest_solver
 using BenchmarkTools
+using Random
 #using ProfileView
 
 # NieEtal2017Ex52
@@ -64,19 +66,19 @@ end
 
 #x_init =  [0; 0; 1.1097; 0.3143; −0.8184] # causes a bug
 best_x = [1.; −1; -1; −1; -1; -1; 1; −1; −1; 1]
-x_init = best_x .+ 1 .- 2 .* rand(MersenneTwister(12345), 10)
+#x_init = best_x .- 2 .* rand(MersenneTwister(123456), 10)
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
 #sol = solve_bop(bop; x_init=best_x)
-#sol = solve_bop(bop; max_iter=3000)
-sol = solve_bop(bop; x_init)
+sol = solve_bop(bop)
+#sol = solve_bop(bop; x_init)
 
-OP1 = forrest_solver.OptimizationProblem(10, 1:5, F, G, zeros(13), fill(Inf, 13))
-OP2 = forrest_solver.OptimizationProblem(10, 1:5, f, g, zeros(13), fill(Inf, 13))
+#OP1 = forrest_solver.OptimizationProblem(10, 1:5, F, G, zeros(13), fill(Inf, 13))
+#OP2 = forrest_solver.OptimizationProblem(10, 1:5, f, g, zeros(13), fill(Inf, 13))
 
-bilevel = [OP1; OP2]
-out = forrest_solver.solve(bilevel, [x_init; zeros(145)])
-sol_forrest = out[1:n]
+#bilevel = [OP1; OP2]
+#out = forrest_solver.solve(bilevel, [x_init; zeros(145)])
+#sol_forrest = out[1:n]
 
-@info sol
-@info sol_forrest
+@info (sol - best_x)
+#@info (sol_forrest - best_x)

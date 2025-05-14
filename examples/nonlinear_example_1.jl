@@ -1,8 +1,8 @@
 using BilevelOptSolver
 
-include("../src/forrest_solver.jl")
-using .forrest_solver
-using BenchmarkTools
+#include("../src/forrest_solver.jl")
+#using .forrest_solver
+#using BenchmarkTools
 #using ProfileView
 
 # AiyoshiShimizu1984Ex2
@@ -51,16 +51,14 @@ global_opt_sol = [25.; 30; 5; 10]
 local_opt_sol = [0.; 0; -10; -10]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-sol = @btime solve_bop(bop)
-#sol = @btime solve_bop(bop; x_init=global_opt_sol)
-
-OP1 = forrest_solver.OptimizationProblem(4, 1:2, F, G, zeros(5), fill(Inf, 5))
-OP2 = forrest_solver.OptimizationProblem(4, 1:2, f, g, zeros(6), fill(Inf, 6))
-
-bilevel = [OP1; OP2]
-out = @btime forrest_solver.solve(bilevel)
-#out = @btime forrest_solver.solve(bilevel, [global_opt_sol; zeros(64)])
-sol_forrest = out[1:n]
-
+#sol = solve_bop(bop)
+sol = solve_bop(bop; x_init=global_opt_sol)
 @info sol
-@info sol_forrest
+
+#OP1 = forrest_solver.OptimizationProblem(4, 1:2, F, G, zeros(5), fill(Inf, 5))
+#OP2 = forrest_solver.OptimizationProblem(4, 1:2, f, g, zeros(6), fill(Inf, 6))
+#bilevel = [OP1; OP2]
+#out = forrest_solver.solve(bilevel)
+##out = @btime forrest_solver.solve(bilevel, [global_opt_sol; zeros(64)])
+#sol_forrest = out[1:n]
+#@info sol_forrest

@@ -258,7 +258,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
     )
 end
 
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
     iter_count = 0
     is_all_J_feas = false
     is_converged = false
@@ -295,6 +295,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
 
     while !is_converged
         iter_count += 1
+        @info iter_count
 
         # WARN: this makes it go super slow
         #x₁ = v[1:bop.n₁]
@@ -304,11 +305,10 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
         #v = [x; λ; s]
 
         follow_feas_Js = find_follow_feas_ind_sets(bop, v)
-        #Main.@infiltrate
         is_all_J_feas = true # is there a feasible Λ for all follower feasible Js?
 
         if length(follow_feas_Js) > 1
-            @warn "multiple feasible sets detected"
+            @info "multiple feasible sets detected"
         end
 
         for Ji in follow_feas_Js
@@ -317,12 +317,14 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
             is_Λ_feasible = false
             try
                 _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all = [Λ; Λ_v_l; Λ_v_u] for BOPᵢ given v
+                @info "solve_Λ_feas successful: $is_Λ_feasible"
             catch
                 is_Λ_feasible = false
+                @info "solve_Λ_feas failed: $is_Λ_feasible"
             end
-
             # if for some J there's no feasible Λ, we need to update v:
             if !is_Λ_feasible
+                # @info "infeasible Ji detected"
                 is_all_J_feas = false
                 v, _ = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
                 break
@@ -331,6 +333,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=100)
 
         if is_all_J_feas
             is_converged = true
+            @info "all Js are feasible"
 
             for Ji in follow_feas_Js
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
@@ -411,9 +414,10 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
         end
         K[j] = Kj
     end
-    valid_solution = !any(isempty.(Kj for Kj in values(K)))
+    is_sol_valid = !any(isempty.(Kj for Kj in values(K)))
 
-    if !valid_solution
+    if !is_sol_valid
+        #Main.@infiltrate
         throw(error("Not a valid solution!"))
     end
 
@@ -436,7 +440,6 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
         end
         push!(Js, J)
     end
-    #Main.@infiltrate
     Js
 end
 
@@ -729,7 +732,6 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
     ∇ᵥGh = sparse(bop.eval_∇ᵥGh.rows, bop.eval_∇ᵥGh.cols, zeros(Cdouble, length(bop.eval_∇ᵥGh.rows)), bop.eval_∇ᵥGh.shape[1], bop.eval_∇ᵥGh.shape[2])
 
     function solve(v, Ji_bounds)
-        # TODO: 2025-05-11 ∇ᵥF -  ∇ᵥGh' * Λ is not zero :( what am I missing???
         bop.eval_Gh!(Gh, v)
         bop.eval_∇ᵥF!(∇ᵥF, v)
         bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
@@ -763,13 +765,15 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         """
         debug
         """
-        #v, Λ, solvestat, ipopt_prob = solve_BOPᵢ_nlp(Ji_bounds; v_init=v)
+        #solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
+        #v, Λ, is_BOPᵢ_solved, ipopt_prob = solve_BOPᵢ_nlp(Ji_bounds; v_init=v)
         #Gh = zeros(bop.m)
         #∇ᵥF = zeros(bop.nᵥ)
         #∇ᵥGh = sparse(bop.eval_∇ᵥGh.rows, bop.eval_∇ᵥGh.cols, zeros(Cdouble, length(bop.eval_∇ᵥGh.rows)), bop.eval_∇ᵥGh.shape[1], bop.eval_∇ᵥGh.shape[2])
         #bop.eval_Gh!(Gh, v)
         #bop.eval_∇ᵥF!(∇ᵥF, v)
         #bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
+
         #if !all(Gh[bop.m₁+1:end] .≥ Ji_bounds.h_l .- 1e-6) || !all(Gh[bop.m₁+1:end] .≤ Ji_bounds.h_u .+ 1e-6) || !all(Λ[bop.m₁+1:end] .≥ Ji_bounds.z_l .- 1e-6) || !all(Λ[bop.m₁+1:end] .≤ Ji_bounds.z_u .+ 1e-6)
         #    @error "invalid solution"
         #end
@@ -777,7 +781,11 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         #∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(bop.nᵥ); -LinearAlgebra.I(bop.nᵥ)]
         #Λ_all = [Λ; ipopt_prob.mult_x_L; ipopt_prob.mult_x_U]
         #@info ∇ᵥF - ∇ᵥGhb' * Λ_all
+
+     
+
         #if !all(A * Λ_all .≥ row_lower .- 1e-6) || !all(A * Λ_all .≤ row_upper .+ 1e-6) || !all(Λ_all .≥ col_lower .- 1e-6) || !all(Λ_all .≤ col_upper .+ 1e-6)
+        #    Main.@infiltrate
         #    @error "you have a bug here mate"
         #end
         """

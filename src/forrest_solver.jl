@@ -262,6 +262,9 @@ function solve(epec, θ; tol=1e-6, max_iters=10)
             error("One or more of the subpieces resulted in no solution.")
         end
     end
+    if converged
+        @info "Success forrest in $iters iterations"
+    end
     return θ
 end
 
