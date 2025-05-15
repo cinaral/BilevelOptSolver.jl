@@ -295,7 +295,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
 
     while !is_converged
         iter_count += 1
-        @info iter_count
+        @info "iteration $iter_count"
 
         # WARN: this makes it go super slow
         #x₁ = v[1:bop.n₁]
@@ -317,10 +317,10 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
             is_Λ_feasible = false
             try
                 _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all = [Λ; Λ_v_l; Λ_v_u] for BOPᵢ given v
-                @info "solve_Λ_feas successful: $is_Λ_feasible"
+                #@info "solve_Λ_feas successful: $is_Λ_feasible"
             catch
                 is_Λ_feasible = false
-                @info "solve_Λ_feas failed: $is_Λ_feasible"
+                #@info "solve_Λ_feas failed: $is_Λ_feasible"
             end
             # if for some J there's no feasible Λ, we need to update v:
             if !is_Λ_feasible
@@ -333,7 +333,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
 
         if is_all_J_feas
             is_converged = true
-            @info "all Js are feasible"
+            #@info "all Js are feasible"
 
             for Ji in follow_feas_Js
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
@@ -367,7 +367,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
     λ = v[bop.nₓ+1:bop.nₓ+bop.m₂]
     s = v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
 
-    x
+    (; x, is_converged)
 end
 
 

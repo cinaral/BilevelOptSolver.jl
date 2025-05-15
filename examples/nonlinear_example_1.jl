@@ -51,8 +51,8 @@ global_opt_sol = [25.; 30; 5; 10]
 local_opt_sol = [0.; 0; -10; -10]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-#sol = solve_bop(bop)
-sol = solve_bop(bop; x_init=global_opt_sol)
+sol = solve_bop(bop)
+#sol = solve_bop(bop; x_init=global_opt_sol)
 @info sol
 
 #OP1 = forrest_solver.OptimizationProblem(4, 1:2, F, G, zeros(5), fill(Inf, 5))
