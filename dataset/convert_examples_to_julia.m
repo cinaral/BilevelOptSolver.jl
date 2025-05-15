@@ -11,7 +11,7 @@ fprintf(list_fileID, strcat("problems = [\n"));
 
 for i = 1:num_problems
 	% piecewise or trigonometric problems
-	if (i == 36 || i == 49 || i ==50 || i == 51|| i == 79 || i == 80 || i == 114 || i==115 || i==126 ||i == 138 || i == 173)
+	if (i == 36 || i == 49 || i ==50 || i == 51|| i == 79 || i == 80 || i == 114 || i==115 || i==126 ||i == 138 || i == 149 || i==160|| i == 173)
 		continue
 	end
 	fprintf('converting %d\n',i)
