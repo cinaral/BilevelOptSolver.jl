@@ -42,8 +42,8 @@ for i = 1:num_problems
 	print_body(prob_fileID, "f", f, dim(1), dim(2))
 	print_body(prob_fileID, "g", -g, dim(1), dim(2), true)
 	
-	fprintf(prob_fileID, strcat("xy_init = [", num2str(reshape(xy', 1, [])), "]'\n"));
-	fprintf(prob_fileID, strcat("Ff_optimal = [", num2str(Ff), "]\n\n"));
+	fprintf(prob_fileID, strcat("xy_init = Float64", string(mat2str(xy)), "\n"));
+	fprintf(prob_fileID, strcat("Ff_optimal = Float64", string(mat2str(Ff')), "\n\n"));
 	
 	fprintf(prob_fileID, strcat("(; n1, n2, F, G, f, g, xy_init, Ff_optimal)\n\n"));
 	fprintf(prob_fileID, strcat("end ", "\n\n"));
@@ -78,16 +78,20 @@ char_expr = replace(char_expr, '*', ' .* ');
 char_expr = replace(char_expr, '+', '.+');
 char_expr = replace(char_expr, '-', '.-');
 char_expr = replace(char_expr, '^', ' .^');
+char_expr = replace(char_expr, 'exp(', 'exp.(');
 
 if is_arr_out & length(expr) < 2 % we expect an array of length 1
-	fprintf(fileID, "Float64[");
+	fprintf(fileID, "[");
 end
 fprintf(fileID, char_expr);
 if is_arr_out & length(expr) == 1
-	fprintf(fileID, ",");
+	fprintf(fileID, ";");
 end
 if is_arr_out & length(expr) < 2
 	fprintf(fileID, "]");
+end
+if ~is_arr_out
+	fprintf(fileID, "[1]");
 end
 fprintf(fileID, "\nend\n\n");
 end

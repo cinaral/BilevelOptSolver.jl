@@ -258,7 +258,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
     )
 end
 
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity=0)
     iter_count = 0
     is_all_J_feas = false
     is_converged = false
@@ -278,7 +278,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
     catch
         # first solve the bilevel feasibility problem, then solve the follower's problem
         x₁, x₂ = find_bilevel_feas_pt(bop; x_init)
-        @warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
+        if verbosity > 1
+            @warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
+        end
         x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
         v = [x₁; x₂; λ; s]
     end
@@ -295,8 +297,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
 
     while !is_converged
         iter_count += 1
-        @info "iteration $iter_count"
-
+        if verbosity > 0
+            @info "iteration $iter_count"
+        end
         # WARN: this makes it go super slow
         #x₁ = v[1:bop.n₁]
         #x₂ = v[bop.n₁+1:bop.n₁+bop.n₂]
@@ -307,8 +310,10 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
         follow_feas_Js = find_follow_feas_ind_sets(bop, v)
         is_all_J_feas = true # is there a feasible Λ for all follower feasible Js?
 
-        if length(follow_feas_Js) > 1
-            @info "multiple feasible sets detected"
+        if verbosity > 2
+            if length(follow_feas_Js) > 1
+                @info "multiple feasible sets detected"
+            end
         end
 
         for Ji in follow_feas_Js
@@ -317,14 +322,20 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
             is_Λ_feasible = false
             try
                 _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all = [Λ; Λ_v_l; Λ_v_u] for BOPᵢ given v
-                #@info "solve_Λ_feas successful: $is_Λ_feasible"
+                if verbosity > 2
+                    @info "solve_Λ_feas successful: $is_Λ_feasible"
+                end
             catch
                 is_Λ_feasible = false
-                #@info "solve_Λ_feas failed: $is_Λ_feasible"
+                if verbosity > 2
+                    @info "solve_Λ_feas failed: $is_Λ_feasible"
+                end
             end
             # if for some J there's no feasible Λ, we need to update v:
             if !is_Λ_feasible
-                # @info "infeasible Ji detected"
+                if verbosity > 2
+                    @info "infeasible Ji detected"
+                end
                 is_all_J_feas = false
                 v, _ = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
                 break
@@ -333,7 +344,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
 
         if is_all_J_feas
             is_converged = true
-            #@info "all Js are feasible"
+            if verbosity > 2
+                @info "all Js are feasible"
+            end
 
             for Ji in follow_feas_Js
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
@@ -355,13 +368,17 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10)
         end
 
         if iter_count > max_iter
-            @error "Reached max iterations!"
+            if verbosity > 0
+                @warn "Max iterations!"
+            end
             break
         end
     end
 
     if is_converged
-        @info "Success in $iter_count iterations"
+        if verbosity > 0
+            @info "Success in $iter_count iterations"
+        end
     end
     x = v[1:bop.nₓ]
     λ = v[bop.nₓ+1:bop.nₓ+bop.m₂]
@@ -417,7 +434,7 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
     is_sol_valid = !any(isempty.(Kj for Kj in values(K)))
 
     if !is_sol_valid
-        #Main.@infiltrate
+        Main.@infiltrate
         throw(error("Not a valid solution!"))
     end
 
@@ -782,7 +799,7 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         #Λ_all = [Λ; ipopt_prob.mult_x_L; ipopt_prob.mult_x_U]
         #@info ∇ᵥF - ∇ᵥGhb' * Λ_all
 
-     
+
 
         #if !all(A * Λ_all .≥ row_lower .- 1e-6) || !all(A * Λ_all .≤ row_upper .+ 1e-6) || !all(Λ_all .≥ col_lower .- 1e-6) || !all(Λ_all .≤ col_upper .+ 1e-6)
         #    Main.@infiltrate
