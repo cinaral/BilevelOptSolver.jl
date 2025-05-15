@@ -170,8 +170,6 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     Gh_l₀ = [fill(0, m₁); zeros(mₕ)]
     Gh_u₀ = fill(Inf, m)
 
-    #Main.@infiltrate
-
     eval_F = Symbolics.build_function(F_sym, v; expression=Val{false})
 
     Gh = [G_sym; h] # BOPᵢ constraints
@@ -283,7 +281,7 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     )
 end
 
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=100, verbosity=0)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=1)
     iter_count = 0
     is_all_J_feas = false
     is_converged = false
@@ -328,8 +326,6 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=100, verbosit
             @info "iteration $iter_count"
         end
 
-        # WARN: this makes it go super slow
-
         if !is_BOPᵢ_solved
             # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp again
             x₁ = v[1:bop.n₁]
@@ -343,6 +339,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=100, verbosit
         end
 
         follow_feas_Js = find_follow_feas_ind_sets(bop, v)
+
         is_all_J_feas = true # is there a feasible Λ for all follower feasible Js?
 
         if verbosity > 2
@@ -368,7 +365,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=100, verbosit
             catch
                 is_Λ_feasible = false
                 if verbosity > 2
-                    @info "solve_Λ_feas failed: $is_Λ_feasible"
+                    @info "solve_Λ_feas failed"
                 end
             end
             # if for some J there's no feasible Λ, we need to update v:
@@ -392,6 +389,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=100, verbosit
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
                 v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
 
+                #Main.@infiltrate
                 if is_BOPᵢ_solved  # check if all solutions agree
                     dv = v - prev_v
                     prev_v .= v
@@ -729,7 +727,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
         ipopt_prob.x = v_init
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
-        success = solvestat == 0
+        success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
 
         v = ipopt_prob.x
         Λ = -ipopt_prob.mult_g # convention change!!
@@ -842,13 +840,13 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
         #bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
 
         #if !all(Gh[bop.m₁+1:end] .≥ Ji_bounds.h_l .- 1e-6) || !all(Gh[bop.m₁+1:end] .≤ Ji_bounds.h_u .+ 1e-6) || !all(Λ[bop.m₁+1:end] .≥ Ji_bounds.z_l .- 1e-6) || !all(Λ[bop.m₁+1:end] .≤ Ji_bounds.z_u .+ 1e-6)
+        #    Main.@infiltrate
         #    @error "invalid solution"
         #end
 
         #∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(bop.nᵥ); -LinearAlgebra.I(bop.nᵥ)]
         #Λ_all = [Λ; ipopt_prob.mult_x_L; ipopt_prob.mult_x_U]
         #@info ∇ᵥF - ∇ᵥGhb' * Λ_all
-
 
 
         #if !all(A * Λ_all .≥ row_lower .- 1e-6) || !all(A * Λ_all .≤ row_upper .+ 1e-6) || !all(Λ_all .≥ col_lower .- 1e-6) || !all(Λ_all .≤ col_upper .+ 1e-6)

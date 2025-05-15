@@ -14,11 +14,11 @@ optimalish_count = 0
 suboptimalish_count = 0
 
 for prob in problems
-    #if "DesignCentringP2" == prob
+    #if "Bard1988Ex1" == prob
     p = getfield(Main, Symbol(prob))()
 
     bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
-    sol, is_converged, info = solve_bop(bop; x_init=p.xy_init, verbosity=0)
+    sol, is_converged, info = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=0)
 
     if is_converged
         global converged_count += 1
@@ -49,4 +49,5 @@ for prob in problems
     global prob_count += 1
     #end
 end
+prob_count -= 1
 print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\n")
