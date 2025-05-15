@@ -119,7 +119,7 @@ end
 """
 Construct BilevelOptProb
 """
-function construct_bop(n₁, n₂, F, G, f, g)
+function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     nₓ = n₁ + n₂ # length(x)
 
     x_dummy = zeros(nₓ)
@@ -149,7 +149,12 @@ function construct_bop(n₁, n₂, F, G, f, g)
 
     ∇ₓ₂f = Symbolics.gradient(f_sym, x₂)
     ∇ₓ₂g = Symbolics.sparsejacobian(g_sym, x₂)
-    h = [∇ₓ₂f - ∇ₓ₂g' * λ_sym; g_sym - s_sym; λ_sym]
+
+    if isempty(λ_sym)
+        h = [∇ₓ₂f; g_sym - s_sym; λ_sym]
+    else
+        h = [∇ₓ₂f - ∇ₓ₂g' * λ_sym; g_sym - s_sym; λ_sym]
+    end
     @assert(mₕ == length(h))
 
     # h(v) ⟂ z_lb ≤ z ≤ z_ub
@@ -164,6 +169,8 @@ function construct_bop(n₁, n₂, F, G, f, g)
     v_u₀ = [fill(Inf, n₁); z_u₀]
     Gh_l₀ = [fill(0, m₁); zeros(mₕ)]
     Gh_u₀ = fill(Inf, m)
+
+    #Main.@infiltrate
 
     eval_F = Symbolics.build_function(F_sym, v; expression=Val{false})
 
@@ -201,7 +208,12 @@ function construct_bop(n₁, n₂, F, G, f, g)
     eval_∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals, x_sym; expression=Val{false})[2]
     eval_∇ₓ₂g = (; shape=size(∇ₓ₂g), rows=∇ₓ₂g_rows, cols=∇ₓ₂g_cols, vals=eval_∇ₓ₂g_vals!)
 
-    L_follow = obj_factor * f_sym + g_sym' * λ_sym # WARN: IPOPT convention: ∇²ₓ₂f(x) + λᵀ ∇²ₓ₂ g(x)
+    if isempty(λ_sym)
+        L_follow = obj_factor * f_sym # WARN: IPOPT convention: ∇²ₓ₂f(x) + λᵀ ∇²ₓ₂ g(x)
+    else
+        L_follow = obj_factor * f_sym + g_sym' * λ_sym # WARN: IPOPT convention: ∇²ₓ₂f(x) + λᵀ ∇²ₓ₂ g(x)
+    end
+
     ∇ₓ₂L_follow = Symbolics.gradient(L_follow, x₂)
     ∇²ₓ₂L_follow = Symbolics.sparsejacobian(∇ₓ₂L_follow, x₂)
     (∇²ₓ₂L_follow_rows, ∇²ₓ₂L_follow_cols, ∇²ₓ₂L_follow_vals) = SparseArrays.findnz(∇²ₓ₂L_follow)
@@ -218,12 +230,25 @@ function construct_bop(n₁, n₂, F, G, f, g)
     eval_∇ₓGg = (; shape=size(∇ₓGg), rows=∇ₓGg_rows, cols=∇ₓGg_cols, vals=eval_∇ₓGg_vals!)
 
     Λf_sym = Symbolics.@variables(Λf[1:m₁+m₂])[1] |> Symbolics.scalarize
-    L_feas = Λf_sym' * Gg # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
+
+    if isempty(Λf_sym)
+        L_feas = 0.0 # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
+    else
+        L_feas = Λf_sym' * Gg # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
+    end
+
     ∇ₓL_feas = Symbolics.gradient(L_feas, x_sym)
     ∇²ₓL_feas = Symbolics.sparsejacobian(∇ₓL_feas, x_sym)
     (∇²ₓL_feas_rows, ∇²ₓL_feas_cols, ∇²ₓL_feas_vals) = SparseArrays.findnz(∇²ₓL_feas)
     eval_∇²ₓL_feas_vals! = Symbolics.build_function(∇²ₓL_feas_vals, x_sym, Λf_sym; expression=Val{false})[2]
     eval_∇²ₓL_feas = (; shape=size(∇²ₓL_feas), rows=∇²ₓL_feas_rows, cols=∇²ₓL_feas_cols, vals=eval_∇²ₓL_feas_vals!) # hessian of L_feas
+
+    if (verbosity > 3)
+        print("Gh: ")
+        display(Gh)
+        print("∇ᵥGh: ")
+        display(∇ᵥGh)
+    end
 
     BilevelOptProb(
         nₓ,
@@ -258,7 +283,7 @@ function construct_bop(n₁, n₂, F, G, f, g)
     )
 end
 
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity=0)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=100, verbosity=0)
     iter_count = 0
     is_all_J_feas = false
     is_converged = false
@@ -293,19 +318,29 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity
     solve_Λ_feas = setup_Λ_feas_LP(bop)
     solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
 
-    prev_v = v
+    prev_v = zeros(bop.nᵥ)
+    prev_v .= v
+    is_BOPᵢ_solved = true
 
     while !is_converged
         iter_count += 1
         if verbosity > 0
             @info "iteration $iter_count"
         end
+
         # WARN: this makes it go super slow
-        #x₁ = v[1:bop.n₁]
-        #x₂ = v[bop.n₁+1:bop.n₁+bop.n₂]
-        #x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
-        #x = [x₁; x₂]
-        #v = [x; λ; s]
+
+        if !is_BOPᵢ_solved
+            # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp again
+            x₁ = v[1:bop.n₁]
+            x₂ = v[bop.n₁+1:bop.n₁+bop.n₂]
+            x₂, λ, s, solvestat = solve_follower_nlp(bop, x₁; y_init=x₂)
+            if solvestat != 0
+                @warn "shit"
+            end
+            x = [x₁; x₂]
+            v .= [x; λ; s]
+        end
 
         follow_feas_Js = find_follow_feas_ind_sets(bop, v)
         is_all_J_feas = true # is there a feasible Λ for all follower feasible Js?
@@ -315,13 +350,18 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity
                 @info "multiple feasible sets detected"
             end
         end
+        if verbosity > 4
+            print("v: ")
+            display(v)
+            print("feasible Js: ")
+            display(follow_feas_Js)
+        end
 
         for Ji in follow_feas_Js
             Ji_bounds = convert_J_to_bounds(Ji, bop)
-
             is_Λ_feasible = false
             try
-                _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all = [Λ; Λ_v_l; Λ_v_u] for BOPᵢ given v
+                _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v
                 if verbosity > 2
                     @info "solve_Λ_feas successful: $is_Λ_feasible"
                 end
@@ -334,10 +374,10 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity
             # if for some J there's no feasible Λ, we need to update v:
             if !is_Λ_feasible
                 if verbosity > 2
-                    @info "infeasible Ji detected"
+                    @info "infeasible Ji detected; $Ji"
                 end
                 is_all_J_feas = false
-                v, _ = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
+                v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
                 break
             end
         end
@@ -354,20 +394,25 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity
 
                 if is_BOPᵢ_solved  # check if all solutions agree
                     dv = v - prev_v
-
-                    if (LinearAlgebra.norm(dv) > tol)
+                    prev_v .= v
+                    if verbosity > 2
+                        print("norm dv: $(LinearAlgebra.norm(dv))\n")
+                    end
+                    if verbosity > 3
+                        print("dv: ")
+                        display(dv)
+                    end
+                    if (LinearAlgebra.norm(dv) ≥ tol)
                         is_converged = false
-                        prev_v = v
                         break
                     end
                 else
                     is_converged = false
-                    break
                 end
             end
         end
 
-        if iter_count > max_iter
+        if iter_count >= max_iter
             if verbosity > 0
                 @warn "Max iterations!"
             end
@@ -384,7 +429,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10, verbosity
     λ = v[bop.nₓ+1:bop.nₓ+bop.m₂]
     s = v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
 
-    (; x, is_converged)
+    info = (; iter_count, λ, s)
+
+    (; x, is_converged, info)
 end
 
 
@@ -434,7 +481,6 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
     is_sol_valid = !any(isempty.(Kj for Kj in values(K)))
 
     if !is_sol_valid
-        Main.@infiltrate
         throw(error("Not a valid solution!"))
     end
 
@@ -605,10 +651,14 @@ s.t.    Gh_u ≥ Gh(x) ≥ Gh_l
 """
 function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     # these will be overwritten wrt Js, but only the follower's Λₕ=[x₂;λ;s] and h
-    v_l = bop.v_l₀
-    v_u = bop.v_u₀
-    Gh_l = bop.Gh_l₀
-    Gh_u = bop.Gh_u₀
+    v_l = zeros(bop.nᵥ)
+    v_u = zeros(bop.nᵥ)
+    Gh_l = zeros(bop.m)
+    Gh_u = zeros(bop.m)
+    v_l .= bop.v_l₀
+    v_u .= bop.v_u₀
+    Gh_l .= bop.Gh_l₀
+    Gh_u .= bop.Gh_u₀
 
     nele_jac_g = length(bop.eval_∇ᵥGh.rows)
     nele_hess = length(bop.eval_∇²ᵥL.rows)

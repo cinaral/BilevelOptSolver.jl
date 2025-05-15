@@ -10,7 +10,8 @@ list_fileID = fopen(strcat("./converted/problems_list.jl"),'w');
 fprintf(list_fileID, strcat("problems = [\n"));
 
 for i = 1:num_problems
-	if (i == 79 || i == 80 || i == 138 || i == 173)
+	% piecewise or trigonometric problems
+	if (i == 36 || i == 49 || i ==50 || i == 51|| i == 79 || i == 80 || i == 114 || i==115 || i==126 ||i == 138 || i == 173)
 		continue
 	end
 	fprintf('converting %d\n',i)
@@ -22,32 +23,32 @@ for i = 1:num_problems
 	G = fun(x, y, "G");
 	f = fun(x, y, "f");
 	g = fun(x, y, "g");
-	
+
 	fprintf(list_fileID, strcat("\t""", probname, """\n"));
-	
+
 	prob_fileID = fopen(strcat("./converted/", string(i), "_", probname,'.jl'),'w');
-	
+
 	%n?::Int64 = 5
 	%n?::Int64 = 5
 	%n::Int64 = n? + n?
-	
+
 	fprintf(prob_fileID, strcat("function ", probname, "()\n\n"));
-	fprintf(prob_fileID, strcat("n1::Int64 = ", string(dim(1))));
+	fprintf(prob_fileID, strcat("\tn1::Int64 = ", string(dim(1))));
 	fprintf(prob_fileID, "\n");
-	fprintf(prob_fileID, strcat("n2::Int64 = ", string(dim(2))));
+	fprintf(prob_fileID, strcat("\tn2::Int64 = ", string(dim(2))));
 	fprintf(prob_fileID, "\n");
-	
+
 	print_body(prob_fileID, "F", F, dim(1), dim(2))
 	print_body(prob_fileID, "G", -G, dim(1), dim(2), true)
 	print_body(prob_fileID, "f", f, dim(1), dim(2))
 	print_body(prob_fileID, "g", -g, dim(1), dim(2), true)
-	
-	fprintf(prob_fileID, strcat("xy_init = Float64", string(mat2str(xy)), "\n"));
-	fprintf(prob_fileID, strcat("Ff_optimal = Float64", string(mat2str(Ff')), "\n\n"));
-	
-	fprintf(prob_fileID, strcat("(; n1, n2, F, G, f, g, xy_init, Ff_optimal)\n\n"));
+
+	fprintf(prob_fileID, strcat("\txy_init = Float64", string(mat2str(xy)), "\n"));
+	fprintf(prob_fileID, strcat("\tFf_optimal = Float64", string(mat2str(Ff')), "\n\n"));
+
+	fprintf(prob_fileID, strcat("\t(; n1, n2, F, G, f, g, xy_init, Ff_optimal)\n\n"));
 	fprintf(prob_fileID, strcat("end ", "\n\n"));
-	
+
 	fclose(prob_fileID);
 end
 
@@ -56,10 +57,10 @@ fclose(list_fileID);
 
 function [] = print_views(fileID, nx, ny)
 for j = 1:nx
-	fprintf(fileID, strcat("\tx", string(j), " = @view xy[", string(j), "]\n"));
+	fprintf(fileID, strcat("\t\tx", string(j), " = @view xy[", string(j), "]\n"));
 end
 for j = 1:ny
-	fprintf(fileID, strcat("\ty", string(j), " = @view xy[n1+", string(j), "]\n"));
+	fprintf(fileID, strcat("\t\ty", string(j), " = @view xy[n1+", string(j), "]\n"));
 end
 end
 
@@ -69,7 +70,7 @@ if nargin < 6
 	is_arr_out = false;
 end
 
-fprintf(fileID, strcat("function ", fun_name, "(xy)\n"));
+fprintf(fileID, strcat("\tfunction ", fun_name, "(xy)\n"));
 print_views(fileID, nx, ny)
 fprintf(fileID, "\t"); % tab
 
@@ -79,11 +80,14 @@ char_expr = replace(char_expr, '+', '.+');
 char_expr = replace(char_expr, '-', '.-');
 char_expr = replace(char_expr, '^', ' .^');
 char_expr = replace(char_expr, 'exp(', 'exp.(');
+char_expr = replace(char_expr, 'cos(', 'cos.(');
+char_expr = replace(char_expr, 'sin(', 'sin.(');
+
 
 if is_arr_out & length(expr) < 2 % we expect an array of length 1
-	fprintf(fileID, "[");
+	fprintf(fileID, "\t[");
 end
-fprintf(fileID, char_expr);
+fprintf(fileID, strcat("\t", char_expr));
 if is_arr_out & length(expr) == 1
 	fprintf(fileID, ";");
 end
@@ -93,5 +97,5 @@ end
 if ~is_arr_out
 	fprintf(fileID, "[1]");
 end
-fprintf(fileID, "\nend\n\n");
+fprintf(fileID, "\n\tend\n\n");
 end

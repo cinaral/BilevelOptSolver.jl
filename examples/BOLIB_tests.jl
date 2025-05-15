@@ -1,5 +1,4 @@
 # https://biopt.github.io/bolib/
-#module BOLIB
 
 using BilevelOptSolver
 
@@ -8,25 +7,46 @@ bolib_files = filter(contains(r".jl$"), readdir(bolib_dir))
 include("../" .* bolib_dir * "/problems_list.jl")
 include.("../" .* filter(contains(r".jl$"), readdir(bolib_dir; join=true)))
 
+tol = 1e-3
+prob_count = 1
+converged_count = 0
+optimalish_count = 0
+suboptimalish_count = 0
+
 for prob in problems
-    if "DempeDutta2012Ex31" == prob
-        p = getfield(Main.BOLIB, Symbol(prob))()
+    #if "DesignCentringP2" == prob
+    p = getfield(Main, Symbol(prob))()
 
-        bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g)
-        sol, is_converged = solve_bop(bop; x_init=p.xy_init)
+    bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
+    sol, is_converged, info = solve_bop(bop; x_init=p.xy_init, verbosity=0)
 
-        if !is_converged
-            @info "$prob: failed to converge"
-        end
-
+    if is_converged
+        global converged_count += 1
+        print("$prob_count\t $prob\t $(info.iter_count) iterations:\t ")
         if (p.Ff_optimal[3] == 1)
-            if !isapprox([p.F(sol); p.f(sol)], p.Ff_optimal[1:2])
-                @info "$prob: not optimal"
+            if isapprox([p.F(sol); p.f(sol)], p.Ff_optimal[1:2]; rtol=tol)
+                print("optimal")
+                global optimalish_count += 1
+            else
+                print("suboptimal")
+                global suboptimalish_count += 1
             end
         elseif (p.Ff_optimal[3] == 2)
-            if any([p.F(sol); p.f(sol)] .> p.Ff_optimal[1:2])
-                @info "$prob: worse than best known"
+            if any([p.F(sol); p.f(sol)] .> p.Ff_optimal[1:2] .- tol)
+                print("worse than best known")
+                global optimalish_count += 1
+            else
+                print("better/same as best known")
+                global suboptimalish_count += 1
             end
+        else
+            print("no reference solution")
         end
+        print("\n")
+    else
+        print("$prob_count\t $prob\tFailed to converge\n")
     end
+    global prob_count += 1
+    #end
 end
+print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\n")
