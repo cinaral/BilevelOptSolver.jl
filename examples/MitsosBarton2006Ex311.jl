@@ -1,0 +1,53 @@
+using BilevelOptSolver
+
+#include("../src/forrest_solver.jl")
+#using .forrest_solver
+
+n₁::Int64 = 1  
+n₂::Int64 = 1 
+
+function F(xy)
+	x = @view xy[1:n₁]
+	y = @view xy[n₁+1:n₁+n₂]
+	y[1]
+end
+
+function G(xy)
+	x = @view xy[1:n₁]
+	y = @view xy[n₁+1:n₁+n₂]
+	[x[1] + 1; 1 - x[1]]
+end
+
+function f(xy)
+	x = @view xy[1:n₁]
+	y = @view xy[n₁+1:n₁+n₂]
+	x[1]*(2*y[1]^3 - 8*y[1]^2 - (3*y[1])/2 + 16*y[1]^4 + 1/2)
+end
+
+function g(xy)
+	x = @view xy[1:n₁]
+	y = @view xy[n₁+1:n₁+n₂]
+	[y[1] + 4/5; 1 - y[1]]
+end
+
+xy_init = Float64[1;1]
+Ff_optimal = Float64[-0.8;0;1]
+
+
+
+xy_init = [1.0; 1; 1]
+Ff_optimal = [-1.0; 1; 1]
+xy_optimal = [-1.0, -1, 0]
+
+bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
+sol, is_success, iter_count = solve_bop(bop; x_init=xy_init, verbosity=5, max_iter=5)
+if is_success
+    @info "success" sol
+end
+
+#OP1 = forrest_solver.OptimizationProblem(3, 1:1, F, G, zeros(2), fill(Inf, 2))
+#OP2 = forrest_solver.OptimizationProblem(3, 1:2, f, g, zeros(2), fill(Inf, 2))
+#bilevel = [OP1; OP2]
+#out = forrest_solver.solve(bilevel, [xy_init; zeros(26)])
+#sol_forrest = out[1:n]
+#@info (sol_forrest)

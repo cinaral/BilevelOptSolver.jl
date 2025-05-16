@@ -58,7 +58,7 @@ end
 
 x_init = [5.0; 5; 15; 15; 0; 0; 0; 0]
 bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
-sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=2)
+sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=1, max_iter=5000)
 if is_success
     @info "success" sol
 end

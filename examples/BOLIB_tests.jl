@@ -12,32 +12,43 @@ prob_count = 1
 converged_count = 0
 optimalish_count = 0
 suboptimalish_count = 0
+bops = []
+sols = []
+successes = []
+iter_counts = []
 
 for prob in problems
-    #if "MitsosBarton2006Ex311" == prob
+    #if "TuyEtal2007Ex3" == prob
     p = getfield(Main, Symbol(prob))()
 
     bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
     sol, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=0)
+    push!(bops, bop)
+    push!(sols, sol)
+    push!(successes, is_success)
+    push!(iter_counts, iter_count)
 
     if is_success
         global converged_count += 1
         print("$prob_count\t $prob\t $(iter_count) iterations:\t ")
 
-        if (p.Ff_optimal[3] == 1)
+        if p.Ff_optimal[3] == 1
             if isapprox([p.F(sol); p.f(sol)], p.Ff_optimal[1:2]; rtol=tol)
                 print("optimal")
                 global optimalish_count += 1
             else
-                print("suboptimal")
+                print("SUBOPTIMAL")
                 global suboptimalish_count += 1
             end
-        elseif (p.Ff_optimal[3] == 2)
-            if any([p.F(sol); p.f(sol)] .> p.Ff_optimal[1:2] .- tol)
-                print("worse than best known")
+        elseif p.Ff_optimal[3] == 2
+            if isapprox([p.F(sol); p.f(sol)], p.Ff_optimal[1:2]; rtol=tol)
+                print("same as best known")
+                global optimalish_count += 1
+            elseif p.F(sol) < p.Ff_optimal[1] - tol || (isapprox(p.F(sol), p.Ff_optimal[1]; rtol=tol) && p.f(sol) < p.Ff_optimal[2] - tol)
+                print("better than best known: ours F=$(p.F(sol)), f=$(p.F(sol)), best known: F=$(p.Ff_optimal[1]), f=$(p.Ff_optimal[2])")
                 global optimalish_count += 1
             else
-                print("better/same as best known")
+                print("WORSE than best known")
                 global suboptimalish_count += 1
             end
         else
