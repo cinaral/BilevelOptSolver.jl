@@ -6,14 +6,15 @@ addpath(genpath("./Examples/Simple"))
 
 num_problems = 173 % max 173
 
-list_fileID = fopen(strcat("./converted/problems_list.jl"),'w');
+list_fileID = fopen(strcat("./converted/working_problems_list.jl"),'w');
 fprintf(list_fileID, strcat("problems = [\n"));
 
 for i = 1:num_problems
-	% piecewise or trigonometric problems
-	if (i == 36 || i == 49 || i ==50 || i == 51|| i == 79 || i == 80 || i == 114 || i==115 || i==126 ||i == 138 || i == 149 || i==160|| i == 173)
+	% 79-80 has if else statements, 138 requires partial differential equation toolbox, 173 weird probname
+	if i == 79 || i == 80 || i == 138 || i == 173
 		continue
 	end
+	
 	fprintf('converting %d\n',i)
 	[probname, dim, xy, Ff] = InfomAllExamp(i);
 	x = sym("x", [dim(1) 1], "real");
@@ -23,32 +24,37 @@ for i = 1:num_problems
 	G = fun(x, y, "G");
 	f = fun(x, y, "f");
 	g = fun(x, y, "g");
-
-	fprintf(list_fileID, strcat("\t""", probname, """\n"));
-
+	
+	% 36, 49, 50, 51  piecewise
+	% 114, 115 does not compile
+	% 126, 160 not a valid solution or failed to solve follower NLP
+	if ~(i == 36 || i == 49 || i == 50 || i == 51 || i == 114 || i == 115 || i == 126 || i == 160)
+		fprintf(list_fileID, strcat("\t""", probname, """\n"));
+	end
+	
 	prob_fileID = fopen(strcat("./converted/", string(i), "_", probname,'.jl'),'w');
-
+	
 	%n?::Int64 = 5
 	%n?::Int64 = 5
 	%n::Int64 = n? + n?
-
-	fprintf(prob_fileID, strcat("function ", probname, "()\n\n"));
+	
+	fprintf(prob_fileID, strcat("function ", probname, "()\n"));
 	fprintf(prob_fileID, strcat("\tn1::Int64 = ", string(dim(1))));
 	fprintf(prob_fileID, "\n");
 	fprintf(prob_fileID, strcat("\tn2::Int64 = ", string(dim(2))));
-	fprintf(prob_fileID, "\n");
-
+	fprintf(prob_fileID, "\n\n");
+	
 	print_body(prob_fileID, "F", F, dim(1), dim(2))
 	print_body(prob_fileID, "G", -G, dim(1), dim(2), true)
 	print_body(prob_fileID, "f", f, dim(1), dim(2))
 	print_body(prob_fileID, "g", -g, dim(1), dim(2), true)
-
+	
 	fprintf(prob_fileID, strcat("\txy_init = Float64", string(mat2str(xy)), "\n"));
 	fprintf(prob_fileID, strcat("\tFf_optimal = Float64", string(mat2str(Ff')), "\n\n"));
-
-	fprintf(prob_fileID, strcat("\t(; n1, n2, F, G, f, g, xy_init, Ff_optimal)\n\n"));
+	
+	fprintf(prob_fileID, strcat("\t(; n1, n2, F, G, f, g, xy_init, Ff_optimal)\n"));
 	fprintf(prob_fileID, strcat("end ", "\n\n"));
-
+	
 	fclose(prob_fileID);
 end
 
@@ -56,12 +62,8 @@ fprintf(list_fileID, strcat("]\n"));
 fclose(list_fileID);
 
 function [] = print_views(fileID, nx, ny)
-for j = 1:nx
-	fprintf(fileID, strcat("\t\tx", string(j), " = @view xy[", string(j), "]\n"));
-end
-for j = 1:ny
-	fprintf(fileID, strcat("\t\ty", string(j), " = @view xy[n1+", string(j), "]\n"));
-end
+fprintf(fileID, strcat("\t\tx = @view xy[1:n1]\n"));
+fprintf(fileID, strcat("\t\ty = @view xy[n1+1:n1+n2]\n"));
 end
 
 
@@ -75,14 +77,21 @@ print_views(fileID, nx, ny)
 fprintf(fileID, "\t"); % tab
 
 char_expr = char(expr);
-char_expr = replace(char_expr, '*', ' .* ');
-char_expr = replace(char_expr, '+', '.+');
-char_expr = replace(char_expr, '-', '.-');
-char_expr = replace(char_expr, '^', ' .^');
-char_expr = replace(char_expr, 'exp(', 'exp.(');
-char_expr = replace(char_expr, 'cos(', 'cos.(');
-char_expr = replace(char_expr, 'sin(', 'sin.(');
+for j = nx:-1:1
+	char_expr = replace(char_expr, strcat("x", string(j)), strcat("x[", string(j), "]"));
+end
 
+for j = ny:-1:1
+	char_expr = replace(char_expr, strcat("y", string(j)), strcat("y[", string(j), "]"));
+end
+
+%char_expr = replace(char_expr, '*', ' .* ');
+%char_expr = replace(char_expr, '+', '.+');
+%char_expr = replace(char_expr, '-', '.-');
+%char_expr = replace(char_expr, '^', ' .^');
+%char_expr = replace(char_expr, 'exp(', 'exp.(');
+%char_expr = replace(char_expr, 'cos(', 'cos.(');
+%char_expr = replace(char_expr, 'sin(', 'sin.(');
 
 if is_arr_out & length(expr) < 2 % we expect an array of length 1
 	fprintf(fileID, "\t[");
@@ -94,8 +103,8 @@ end
 if is_arr_out & length(expr) < 2
 	fprintf(fileID, "]");
 end
-if ~is_arr_out
-	fprintf(fileID, "[1]");
-end
+%if ~is_arr_out
+%	fprintf(fileID, "[1]");
+%end
 fprintf(fileID, "\n\tend\n\n");
 end

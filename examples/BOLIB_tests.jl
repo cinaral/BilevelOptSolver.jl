@@ -4,7 +4,7 @@ using BilevelOptSolver
 
 bolib_dir = "dataset/converted"
 bolib_files = filter(contains(r".jl$"), readdir(bolib_dir))
-include("../" .* bolib_dir * "/problems_list.jl")
+include("../" .* bolib_dir * "/working_problems_list.jl")
 include.("../" .* filter(contains(r".jl$"), readdir(bolib_dir; join=true)))
 
 tol = 1e-3
@@ -14,7 +14,7 @@ optimalish_count = 0
 suboptimalish_count = 0
 
 for prob in problems
-    #if "Bard1988Ex1" == prob
+    if "TuyEtal2007Ex3" == prob
     p = getfield(Main, Symbol(prob))()
 
     bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
@@ -47,7 +47,7 @@ for prob in problems
         print("$prob_count\t $prob\tFailed to converge\n")
     end
     global prob_count += 1
-    #end
+    end
 end
 prob_count -= 1
 print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\n")
