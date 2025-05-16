@@ -47,9 +47,11 @@ x_init =  [0; 0; 1.1097; 0.3143; −0.8184] # causes a bug
 #global_opt_sol = [−1; −1; 1.1097; 0.3143; −0.8184]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-#sol = solve_bop(bop; x_init=global_opt_sol)
-sol = solve_bop(bop; x_init)
-@info sol
+sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=2)
+#sol, is_success, iter_count = solve_bop(bop; x_init=global_opt_sol, verbosity=2)
+if is_success
+    @info "success" sol
+end
 
 #OP1 = forrest_solver.OptimizationProblem(5, 1:2, F, G, zeros(5), fill(Inf, 5))
 #OP2 = forrest_solver.OptimizationProblem(5, 1:3, f, g, zeros(2), fill(Inf, 2))

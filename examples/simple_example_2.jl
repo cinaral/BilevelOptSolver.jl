@@ -1,8 +1,9 @@
 using BilevelOptSolver
 
-#include("../src/forrest_solver.jl")
-#using .forrest_solver
-#using BenchmarkTools
+include("../src/forrest_solver.jl")
+using .forrest_solver
+using BenchmarkTools
+using ProfileView
 
 # Kleinert (2021)
 n₁::Int64 = 1
@@ -40,17 +41,18 @@ function g(xx)
     ]
 end
 
+x_init = [2.4564338234981746; 0.9845259227566776]
 bop = construct_bop(n₁, n₂, F, G, f, g);
-#sol = solve_bop(bop; x_init=[2.4564338234981746; 0.9845259227566776]) # bilevel feasible init
-sol = solve_bop(bop)
-#sol = solve_bop(bop; x_init=[3/7; 6/7]) # optimal init
-
-@info sol
+sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=0) # bilevel feasible init
+#sol, is_success = solve_bop(bop; verbosity=2)
+if is_success
+    @info "success" sol
+end
 
 #OP1 = forrest_solver.OptimizationProblem(2, 1:1, F, G, zeros(1), fill(Inf, 1))
 #OP2 = forrest_solver.OptimizationProblem(2, 1:1, f, g, zeros(4), fill(Inf, 4))
 #bilevel = [OP1; OP2]
 ##sol_forrest = forrest_solver.solve(bilevel) # doesn't work
-#sol_forrest = @btime forrest_solver.solve(bilevel, [2.4564338234981746; 0.9845259227566776; zeros(37)]) # bilevel feasible init
+#sol_forrest = forrest_solver.solve(bilevel, [2.4564338234981746; 0.9845259227566776; zeros(37)]) # bilevel feasible init
 ##sol_forrest = forrest_solver.solve(bilevel, [3/7; 6/7; zeros(37)]) # optimal init
 #@info sol_forrest[1:n]

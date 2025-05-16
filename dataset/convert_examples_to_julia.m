@@ -5,7 +5,7 @@ addpath(genpath("./Examples/Nonlinear"))
 addpath(genpath("./Examples/Simple"))
 
 num_problems = 173; % max 173
-
+% CalamaiVicente1994b has a bug where xy_init is 7 long...
 list_fileID = fopen(strcat("./converted/working_problems_list.jl"),'w');
 fprintf(list_fileID, strcat("problems = [\n"));
 

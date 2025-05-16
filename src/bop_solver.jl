@@ -281,18 +281,19 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     )
 end
 
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=1)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0)
     iter_count = 0
     is_converged = false
     is_sol_valid = false
+    is_success = false
 
     x::Vector{Float64} = zeros(bop.nₓ)
     λ = zeros(bop.m₂)
     s = zeros(bop.m₂)
     v = zeros(bop.nᵥ)
-    v[1:bop.nₓ] .= x_init
 
-    #solve_Λ_feas = check_is_Λ_feas_LP(bop)
+    v[1:bop.nₓ] .= x_init[1:bop.nₓ]
+
     solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
 
     prev_iter_v = zeros(bop.nᵥ)
@@ -303,8 +304,15 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     while !is_converged
         iter_count += 1
 
+        if iter_count > max_iter
+            if verbosity > 0
+                print("Max iterations reached!\n")
+            end
+            break
+        end
+
         if verbosity > 0
-            @info "iteration $iter_count"
+            print("--Iteration $iter_count\n")
         end
 
         if !is_BOPᵢ_solved
@@ -318,16 +326,22 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
             if !is_follow_nlp_solved
                 if verbosity > 1
-                    @warn "resetting x to a bilevel feasible point"
+                    print("Resetting x to a bilevel feasible point. \n")
                 end
-                x₁, x₂ = find_bilevel_feas_pt(bop; x_init=x)
-                x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
+                x₁, x₂, success = find_bilevel_feas_pt(bop; x_init=x)
+
+                if success
+                    x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
+                else
+                    @error("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).")
+                end
             end
 
             if is_follow_nlp_solved
                 v = [x₁; x₂; λ; s]
             else
                 @error "Failed to solve for the follower's NLP"
+                break
             end
         end
 
@@ -337,24 +351,19 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
         if verbosity > 4
             display(v)
-        else
+        elseif verbosity > 3
             print("\n")
         end
 
         follow_feas_Js = find_follow_feas_ind_sets(bop, v)
         n_J = length(follow_feas_Js)
 
-        if verbosity > 2
+        if verbosity > 1
             if length(n_J) > 1
                 print("Multiple feasible sets ($n_J) detected!\n")
             end
         end
 
-
-
-        #is_all_J_feas = true # is there a feasible Λ for all follower feasible inds (represented by index sets Jᵢ)?
-        #vs = Dict()
-        # one for each Ji
         v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J]
         is_Λ_feasible_arr = fill(false, n_J)
         is_BOPᵢ_solved_arr = fill(false, n_J)
@@ -366,9 +375,13 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
             if is_Λ_feasible
                 is_Λ_feasible_arr[i] = true
-                print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is feasible.\n")
+                if verbosity > 2
+                    print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is feasible.\n")
+                end
             else
-                print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is INFEASIBLE!\n")
+                if verbosity > 1
+                    print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is INFEASIBLE!\n")
+                end
             end
 
             # if we can't confirm there exists a feasible Λ at this J, we need to check and update v:
@@ -386,7 +399,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         if all(is_Λ_feasible_arr) && any(.!is_BOPᵢ_solved_arr)
-            if verbosity > 2
+            if verbosity > 1
                 print("There exists Λ for all ($n_J) follower feasible index sets.\n")
             end
 
@@ -404,14 +417,13 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         if !all(is_BOPᵢ_solved_arr)
-            # oh no, we have no valid v, maybe try again?
-            if any(is_BOPᵢ_solved_arr)
-                is_sol_valid = false
-
-                if verbosity > 2
-                    print("None BOPᵢ could be solved (out of $(n_J)). v is not valid!")
+            if !any(is_BOPᵢ_solved_arr)
+                # oh no, we have no valid v, maybe try again?
+                if verbosity > 0
+                    is_sol_valid = false
+                    print("None BOPᵢ could be solved (out of $(n_J)). v is not valid!\n")
                 end
-                break
+                continue
             end
 
             for (i, _) in enumerate(is_BOPᵢ_solved_arr)
@@ -420,10 +432,12 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                     v = v_arr[i]
                     prev_iter_v .= v_arr[i]
                     if verbosity > 3
-                        print("v updated, moving to next iteration...\n")
+                        print("v updated: ")
                     end
                     if verbosity > 4
                         display(v)
+                    elseif verbosity > 3
+                        print("\n")
                     end
                     break
                 end
@@ -432,42 +446,21 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
         # by this point all BOPᵢ were solved but we don't know if their solutions agree by this point we can check for convergence
         is_sol_valid = true
-        if verbosity > 2
+
+        if verbosity > 1
             print("All ($n_J) BOPᵢ are solved.\n")
         end
 
         if n_J > 1
             for i in 2:n_J
-                v_err = v_arr[i] - v_arr[1]
+                x_err = v_arr[i][1:bop.nₓ] - v_arr[1][1:bop.nₓ] # only checking x error
 
-                if (LinearAlgebra.norm(v_err) > tol)
+                if (LinearAlgebra.norm(x_err) > tol)
                     if verbosity > 1
-                        print("BOPᵢ solutions don't agree at J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                        print("BOPᵢ solutions disagree!\n")
                     end
                     is_sol_valid = false
                     break
-                end
-            end
-        end
-
-        # check if v is stable between iterations if it's a valid solution
-        if (is_sol_valid)
-            dv = v - prev_iter_v
-
-            if (LinearAlgebra.norm(dv) < tol)
-                if verbosity > 3
-                    print("Valid v did not change since last iteration: We converged\n")
-                end
-                is_converged = true
-                break
-            else
-                if verbosity > 3
-                    print("Founda new v: ")
-                end
-                if verbosity > 4
-                    display(v)
-                else
-                    print("\n")
                 end
             end
         end
@@ -476,28 +469,38 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         if n_J > 1
             v .= v_arr[end] # arbitrary
         end
+        # check if v is stable between iterations if it's a valid solution
+        dv = v - prev_iter_v
         prev_iter_v .= v
 
-        if iter_count >= max_iter
-            if verbosity > 0
-                @warn "Max iterations!"
-            end
+        if LinearAlgebra.norm(dv) < tol && is_sol_valid
+            is_converged = true
             break
+        else
+            if verbosity > 3
+                print("Founda new v: ")
+            end
+            if verbosity > 4
+                display(v)
+            elseif verbosity > 3
+                print("\n")
+            end
         end
     end
 
     if is_converged
-        if verbosity > 0
-            @info "Success in $iter_count iterations"
+        if verbosity > 1
+            print("Success in $iter_count iterations\n")
         end
     end
-    x = v[1:bop.nₓ]
-    λ = v[bop.nₓ+1:bop.nₓ+bop.m₂]
-    s = v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
 
-    info = (; iter_count, λ, s)
+    x .= v[1:bop.nₓ]
+    λ .= v[bop.nₓ+1:bop.nₓ+bop.m₂]
+    s .= v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
 
-    (; x, is_converged, success, info)
+    is_success = is_converged && is_sol_valid
+
+    (; x, is_success, iter_count)
 end
 
 
@@ -1087,11 +1090,9 @@ function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10
     ipopt_prob.x = x_init
     solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
-    if solvestat != 0
-        throw(error("Failed finding a bilevel feasible point, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x)."))
-    end
+    success = solvestat == 0 || solvestat == 1
 
     x₁ = ipopt_prob.x[1:bop.n₁]
     x₂ = ipopt_prob.x[bop.n₁+1:bop.n₁+bop.n₂]
-    (; x₁, x₂, solvestat)
+    (; x₁, x₂, success)
 end

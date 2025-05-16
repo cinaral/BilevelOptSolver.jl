@@ -51,9 +51,11 @@ global_opt_sol = [25.; 30; 5; 10]
 local_opt_sol = [0.; 0; -10; -10]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-sol = solve_bop(bop)
+sol, is_success, iter_count = solve_bop(bop; verbosity=2)
 #sol = solve_bop(bop; x_init=global_opt_sol)
-@info sol
+if is_success
+    @info "success" sol
+end
 
 #OP1 = forrest_solver.OptimizationProblem(4, 1:2, F, G, zeros(5), fill(Inf, 5))
 #OP2 = forrest_solver.OptimizationProblem(4, 1:2, f, g, zeros(6), fill(Inf, 6))
