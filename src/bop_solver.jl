@@ -283,132 +283,200 @@ end
 
 function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=1)
     iter_count = 0
-    is_all_J_feas = false
     is_converged = false
-
-    x₁_init = x_init[1:bop.n₁]
-    x₂_init = x_init[bop.n₁+1:bop.n₁+bop.n₂]
+    is_sol_valid = false
 
     x::Vector{Float64} = zeros(bop.nₓ)
     λ = zeros(bop.m₂)
     s = zeros(bop.m₂)
     v = zeros(bop.nᵥ)
+    v[1:bop.nₓ] .= x_init
 
-    # try to solving the follower's problem for the given x_init first, but this may fail if the feasible set of the follower is empty for x₁_init
-    try
-        x₂, λ, s = solve_follower_nlp(bop, x₁_init; y_init=x₂_init)
-        v = [x₁_init; x₂; λ; s]
-    catch
-        # first solve the bilevel feasibility problem, then solve the follower's problem
-        x₁, x₂ = find_bilevel_feas_pt(bop; x_init)
-        if verbosity > 1
-            @warn "Failed to find follower solution for x₁_init=$(x₁_init)! Changed x_init=$([x₁; x₂])"
-        end
-        x₂, λ, s = solve_follower_nlp(bop, x₁; y_init=x₂)
-        v = [x₁; x₂; λ; s]
-    end
-
-    # doesn't matter too much it but could happen if try above succeeds
-    #if any(bop.G(x) .≤ -tol) || any(bop.g(x) .≤ -tol)
-    #    @warn("Initial x is not bilevel feasible!")
-    #end
-    #Main.@infiltrate
-    solve_Λ_feas = setup_Λ_feas_LP(bop)
+    #solve_Λ_feas = check_is_Λ_feas_LP(bop)
     solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
 
-    prev_v = zeros(bop.nᵥ)
-    prev_v .= v
-    is_BOPᵢ_solved = true
+    prev_iter_v = zeros(bop.nᵥ)
+    prev_iter_v .= v
+
+    is_BOPᵢ_solved = false
 
     while !is_converged
         iter_count += 1
+
         if verbosity > 0
             @info "iteration $iter_count"
         end
 
         if !is_BOPᵢ_solved
-            # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp again
-            x₁ = v[1:bop.n₁]
-            x₂ = v[bop.n₁+1:bop.n₁+bop.n₂]
-            x₂, λ, s, solvestat = solve_follower_nlp(bop, x₁; y_init=x₂)
-            if solvestat != 0
-                @warn "shit"
+            # if BOPᵢ wasn't solved the low level solution may be invalid, and we  to call the follower nlp
+            x = @view v[1:bop.nₓ]
+            x₁ = @view x[1:bop.n₁]
+            x₂ = @view x[bop.n₁+1:bop.n₁+bop.n₂]
+
+            x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
+
+            # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
+            if !is_follow_nlp_solved
+                if verbosity > 1
+                    @warn "resetting x to a bilevel feasible point"
+                end
+                x₁, x₂ = find_bilevel_feas_pt(bop; x_init=x)
+                x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
             end
-            x = [x₁; x₂]
-            v .= [x; λ; s]
+
+            if is_follow_nlp_solved
+                v = [x₁; x₂; λ; s]
+            else
+                @error "Failed to solve for the follower's NLP"
+            end
+        end
+
+        # at this point, v should be good for follower's solution
+        if verbosity > 3
+            print("Computing feasible sets for the follower at v: ")
+        end
+        if verbosity > 4
+            display(v)
+        else
+            print("\n")
         end
 
         follow_feas_Js = find_follow_feas_ind_sets(bop, v)
-
-        is_all_J_feas = true # is there a feasible Λ for all follower feasible Js?
+        n_J = length(follow_feas_Js)
 
         if verbosity > 2
-            if length(follow_feas_Js) > 1
-                @info "multiple feasible sets detected"
+            if length(n_J) > 1
+                print("Multiple feasible sets ($n_J) detected!\n")
             end
-        end
-        if verbosity > 4
-            print("v: ")
-            display(v)
-            print("feasible Js: ")
-            display(follow_feas_Js)
         end
 
-        for Ji in follow_feas_Js
+
+
+        #is_all_J_feas = true # is there a feasible Λ for all follower feasible inds (represented by index sets Jᵢ)?
+        #vs = Dict()
+        # one for each Ji
+        v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J]
+        is_Λ_feasible_arr = fill(false, n_J)
+        is_BOPᵢ_solved_arr = fill(false, n_J)
+
+        for (i, Ji) in enumerate(follow_feas_Js)
             Ji_bounds = convert_J_to_bounds(Ji, bop)
-            is_Λ_feasible = false
-            try
-                _, is_Λ_feasible = solve_Λ_feas(v, Ji_bounds) # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v
-                if verbosity > 2
-                    @info "solve_Λ_feas successful: $is_Λ_feasible"
-                end
-            catch
-                is_Λ_feasible = false
-                if verbosity > 2
-                    @info "solve_Λ_feas failed"
+
+            is_Λ_feasible = check_Λ_LP_feas(bop, v, Ji_bounds) # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v
+
+            if is_Λ_feasible
+                is_Λ_feasible_arr[i] = true
+                print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is feasible.\n")
+            else
+                print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is INFEASIBLE!\n")
+            end
+
+            # if we can't confirm there exists a feasible Λ at this J, we need to check and update v:
+            if !is_Λ_feasible
+                v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
+
+                if is_BOPᵢ_solved
+                    if verbosity > 2
+                        print("$i: BOPᵢ solved.\n")
+                    end
+                    is_BOPᵢ_solved_arr[i] = true
+                    v_arr[i] .= v
                 end
             end
-            # if for some J there's no feasible Λ, we need to update v:
-            if !is_Λ_feasible
-                if verbosity > 2
-                    @info "infeasible Ji detected; $Ji"
+        end
+
+        if all(is_Λ_feasible_arr) && any(.!is_BOPᵢ_solved_arr)
+            if verbosity > 2
+                print("There exists Λ for all ($n_J) follower feasible index sets.\n")
+            end
+
+            # compute the remaining BOPᵢ solutions to ensure the solution is valid
+            for (i, Ji) in enumerate(follow_feas_Js)
+                Ji_bounds = convert_J_to_bounds(Ji, bop)
+                if !is_BOPᵢ_solved_arr[i]
+                    v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
+                    if is_BOPᵢ_solved
+                        is_BOPᵢ_solved_arr[i] = true
+                        v_arr[i] .= v
+                    end
                 end
-                is_all_J_feas = false
-                v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
+            end
+        end
+
+        if !all(is_BOPᵢ_solved_arr)
+            # oh no, we have no valid v, maybe try again?
+            if any(is_BOPᵢ_solved_arr)
+                is_sol_valid = false
+
+                if verbosity > 2
+                    print("None BOPᵢ could be solved (out of $(n_J)). v is not valid!")
+                end
                 break
             end
-        end
 
-        if is_all_J_feas
-            is_converged = true
-            if verbosity > 2
-                @info "all Js are feasible"
-            end
-
-            for Ji in follow_feas_Js
-                Ji_bounds = convert_J_to_bounds(Ji, bop)
-                v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
-
-                #Main.@infiltrate
-                if is_BOPᵢ_solved  # check if all solutions agree
-                    dv = v - prev_v
-                    prev_v .= v
-                    if verbosity > 2
-                        print("norm dv: $(LinearAlgebra.norm(dv))\n")
-                    end
+            for (i, _) in enumerate(is_BOPᵢ_solved_arr)
+                # we have some potentially valid solutions to choose from
+                if is_BOPᵢ_solved_arr[i]
+                    v = v_arr[i]
+                    prev_iter_v .= v_arr[i]
                     if verbosity > 3
-                        print("dv: ")
-                        display(dv)
+                        print("v updated, moving to next iteration...\n")
                     end
-                    if (LinearAlgebra.norm(dv) ≥ tol)
-                        is_converged = false
-                        break
+                    if verbosity > 4
+                        display(v)
                     end
-                else
-                    is_converged = false
+                    break
                 end
             end
         end
+
+        # by this point all BOPᵢ were solved but we don't know if their solutions agree by this point we can check for convergence
+        is_sol_valid = true
+        if verbosity > 2
+            print("All ($n_J) BOPᵢ are solved.\n")
+        end
+
+        if n_J > 1
+            for i in 2:n_J
+                v_err = v_arr[i] - v_arr[1]
+
+                if (LinearAlgebra.norm(v_err) > tol)
+                    if verbosity > 1
+                        print("BOPᵢ solutions don't agree at J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                    end
+                    is_sol_valid = false
+                    break
+                end
+            end
+        end
+
+        # check if v is stable between iterations if it's a valid solution
+        if (is_sol_valid)
+            dv = v - prev_iter_v
+
+            if (LinearAlgebra.norm(dv) < tol)
+                if verbosity > 3
+                    print("Valid v did not change since last iteration: We converged\n")
+                end
+                is_converged = true
+                break
+            else
+                if verbosity > 3
+                    print("Founda new v: ")
+                end
+                if verbosity > 4
+                    display(v)
+                else
+                    print("\n")
+                end
+            end
+        end
+
+        # we choose a new v arbitrarily
+        if n_J > 1
+            v .= v_arr[end] # arbitrary
+        end
+        prev_iter_v .= v
 
         if iter_count >= max_iter
             if verbosity > 0
@@ -429,7 +497,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
     info = (; iter_count, λ, s)
 
-    (; x, is_converged, info)
+    (; x, is_converged, success, info)
 end
 
 
@@ -628,15 +696,17 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
     ipopt_prob.x = y_init
     solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
-    if solvestat != 0
-        throw(error("Failed to solve follower NLP, problem may be infeasible for given x₁"))
-    end
+    #if solvestat != 0
+    #    throw(error("Failed to solve follower NLP, problem may be infeasible for given x₁"))
+    #end
+
+    success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level, note Λ is not valid if Solved_To_Acceptable_level because the gradient of lagrangian is not zero
 
     x₂ = ipopt_prob.x
     λ = -ipopt_prob.mult_g # convention change!!
     s = bop.g([x₁; x₂])
 
-    (; x₂, λ, s, solvestat)
+    (; x₂, λ, s, success, solvestat)
 end
 
 """
@@ -727,7 +797,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
         ipopt_prob.x = v_init
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
-        success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+        success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level, note Λ is not valid if Solved_To_Acceptable_level because the gradient of lagrangian is not zero
 
         v = ipopt_prob.x
         Λ = -ipopt_prob.mult_g # convention change!!
@@ -786,7 +856,7 @@ a_index = [1, 2, 0, 1, 2]
 a_value = [1.0, 3.0, 1.0, 2.0, 2.0]
 ___________________________________
 """
-function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
+function check_Λ_LP_feas(bop, v, Ji_bounds; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
     model = HiGHS.Highs_create()
     HiGHS.Highs_setDoubleOptionValue(model, "primal_feasibility_tolerance",
         primal_feas_tol)
@@ -796,130 +866,139 @@ function setup_Λ_feas_LP(bop; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
     ∇ᵥF = zeros(bop.nᵥ)
     ∇ᵥGh = sparse(bop.eval_∇ᵥGh.rows, bop.eval_∇ᵥGh.cols, zeros(Cdouble, length(bop.eval_∇ᵥGh.rows)), bop.eval_∇ᵥGh.shape[1], bop.eval_∇ᵥGh.shape[2])
 
-    function solve(v, Ji_bounds)
-        bop.eval_Gh!(Gh, v)
-        bop.eval_∇ᵥF!(∇ᵥF, v)
-        bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
-        # v bound constraints added, Λ_all = [Λ; Λ_v_l; Λ_v_u]
-        ∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(bop.nᵥ); -LinearAlgebra.I(bop.nᵥ)]
 
-        # Define the column costs, lower bounds and upper bounds
-        col_cost = zeros(bop.m + 2 * bop.nᵥ) # feasibility problem
-        col_lower = [fill(-Inf, bop.m); zeros(2 * bop.nᵥ)] # Λ ≥ Λ_l = 0
-        col_upper = [fill(Inf, bop.m); fill(Inf, 2 * bop.nᵥ)] #  Λ_u ≥ Λ some need to be set zero based on Ji:
+    bop.eval_Gh!(Gh, v)
+    bop.eval_∇ᵥF!(∇ᵥF, v)
+    bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
+    # v bound constraints added, Λ_all = [Λ; Λ_v_l; Λ_v_u]
+    ∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(bop.nᵥ); -LinearAlgebra.I(bop.nᵥ)]
 
-        #Ji_bounds = convert_J_to_bounds(Ji, bop)
-        col_lower[bop.m₁+1:bop.m₁+bop.mₕ] = Ji_bounds.z_l
-        col_upper[bop.m₁+1:bop.m₁+bop.mₕ] = Ji_bounds.z_u
+    # Define the column costs, lower bounds and upper bounds
+    col_cost = zeros(bop.m + 2 * bop.nᵥ) # feasibility problem
+    col_lower = [fill(-Inf, bop.m); zeros(2 * bop.nᵥ)] # Λ ≥ Λ_l = 0
+    col_upper = [fill(Inf, bop.m); fill(Inf, 2 * bop.nᵥ)] #  Λ_u ≥ Λ some need to be set zero based on Ji:
 
-        offset = 0.0 # unused
-        # Define the row lower bounds and upper bounds A_l = A_u = b
-        row_lower = [∇ᵥF; 0]
-        row_upper = [∇ᵥF; 0]
-        # TODO: verify this
-        row_lower[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_l
-        row_upper[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_u
+    #Ji_bounds = convert_J_to_bounds(Ji, bop)
+    col_lower[bop.m₁+1:bop.m₁+bop.mₕ] = Ji_bounds.z_l
+    col_upper[bop.m₁+1:bop.m₁+bop.mₕ] = Ji_bounds.z_u
 
-        # constraint matrix is column-wise:
-        G = @view Gh[1:bop.m₁]
-        A = vcat(∇ᵥGhb', sparse([G' zeros(bop.mₕ + 2 * bop.nᵥ)'])) # Λ₁ᵀ G = 0 (leader complementarity) added
-        a_start = A.colptr[1:end-1] .- 1
-        a_index = A.rowval .- 1
-        a_value = A.nzval
+    offset = 0.0 # unused
+    # Define the row lower bounds and upper bounds A_l = A_u = b
+    row_lower = [∇ᵥF; 0]
+    row_upper = [∇ᵥF; 0]
+    # TODO: verify this
+    row_lower[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_l
+    row_upper[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_u
 
-        """
-        debug
-        """
-        #solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
-        #v, Λ, is_BOPᵢ_solved, ipopt_prob = solve_BOPᵢ_nlp(Ji_bounds; v_init=v)
-        #Gh = zeros(bop.m)
-        #∇ᵥF = zeros(bop.nᵥ)
-        #∇ᵥGh = sparse(bop.eval_∇ᵥGh.rows, bop.eval_∇ᵥGh.cols, zeros(Cdouble, length(bop.eval_∇ᵥGh.rows)), bop.eval_∇ᵥGh.shape[1], bop.eval_∇ᵥGh.shape[2])
-        #bop.eval_Gh!(Gh, v)
-        #bop.eval_∇ᵥF!(∇ᵥF, v)
-        #bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
+    # constraint matrix is column-wise:
+    G = @view Gh[1:bop.m₁]
+    A = vcat(∇ᵥGhb', sparse([G' zeros(bop.mₕ + 2 * bop.nᵥ)'])) # Λ₁ᵀ G = 0 (leader complementarity) added
+    a_start = A.colptr[1:end-1] .- 1
+    a_index = A.rowval .- 1
+    a_value = A.nzval
 
-        #if !all(Gh[bop.m₁+1:end] .≥ Ji_bounds.h_l .- 1e-6) || !all(Gh[bop.m₁+1:end] .≤ Ji_bounds.h_u .+ 1e-6) || !all(Λ[bop.m₁+1:end] .≥ Ji_bounds.z_l .- 1e-6) || !all(Λ[bop.m₁+1:end] .≤ Ji_bounds.z_u .+ 1e-6)
-        #    Main.@infiltrate
-        #    @error "invalid solution"
-        #end
+    """
+    debug
+    """
+    #solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
+    #v, Λ, is_BOPᵢ_solved, ipopt_prob = solve_BOPᵢ_nlp(Ji_bounds; v_init=v)
+    #Gh = zeros(bop.m)
+    #∇ᵥF = zeros(bop.nᵥ)
+    #∇ᵥGh = sparse(bop.eval_∇ᵥGh.rows, bop.eval_∇ᵥGh.cols, zeros(Cdouble, length(bop.eval_∇ᵥGh.rows)), bop.eval_∇ᵥGh.shape[1], bop.eval_∇ᵥGh.shape[2])
+    #bop.eval_Gh!(Gh, v)
+    #bop.eval_∇ᵥF!(∇ᵥF, v)
+    #bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
 
-        #∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(bop.nᵥ); -LinearAlgebra.I(bop.nᵥ)]
-        #Λ_all = [Λ; ipopt_prob.mult_x_L; ipopt_prob.mult_x_U]
-        #@info ∇ᵥF - ∇ᵥGhb' * Λ_all
+    #if !all(Gh[bop.m₁+1:end] .≥ Ji_bounds.h_l .- 1e-6) || !all(Gh[bop.m₁+1:end] .≤ Ji_bounds.h_u .+ 1e-6) || !all(Λ[bop.m₁+1:end] .≥ Ji_bounds.z_l .- 1e-6) || !all(Λ[bop.m₁+1:end] .≤ Ji_bounds.z_u .+ 1e-6)
+    #    Main.@infiltrate
+    #    @error "invalid solution"
+    #end
+
+    #∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(bop.nᵥ); -LinearAlgebra.I(bop.nᵥ)]
+    #Λ_all = [Λ; ipopt_prob.mult_x_L; ipopt_prob.mult_x_U]
+    #@info ∇ᵥF - ∇ᵥGhb' * Λ_all
 
 
-        #if !all(A * Λ_all .≥ row_lower .- 1e-6) || !all(A * Λ_all .≤ row_upper .+ 1e-6) || !all(Λ_all .≥ col_lower .- 1e-6) || !all(Λ_all .≤ col_upper .+ 1e-6)
-        #    Main.@infiltrate
-        #    @error "you have a bug here mate"
-        #end
-        """
-        debug end
-        """
+    #if !all(A * Λ_all .≥ row_lower .- 1e-6) || !all(A * Λ_all .≤ row_upper .+ 1e-6) || !all(Λ_all .≥ col_lower .- 1e-6) || !all(Λ_all .≤ col_upper .+ 1e-6)
+    #    Main.@infiltrate
+    #    @error "you have a bug here mate"
+    #end
+    """
+    debug end
+    """
 
-        n_col = convert(Cint, size(col_cost, 1))
-        n_row = convert(Cint, size(row_lower, 1))
-        n_nz = convert(Cint, size(a_index, 1))
-        col_cost = convert(Array{Cdouble}, col_cost)
-        col_lower = convert(Array{Cdouble}, col_lower)
-        col_upper = convert(Array{Cdouble}, col_upper)
-        offset = convert(Cdouble, offset)
-        row_lower = convert(Array{Cdouble}, row_lower)
-        row_upper = convert(Array{Cdouble}, row_upper)
-        a_start = convert(Array{Cint}, a_start)
-        a_index = convert(Array{Cint}, a_index)
-        a_value = convert(Array{Cdouble}, a_value)
+    n_col = convert(Cint, size(col_cost, 1))
+    n_row = convert(Cint, size(row_lower, 1))
+    n_nz = convert(Cint, size(a_index, 1))
+    col_cost = convert(Array{Cdouble}, col_cost)
+    col_lower = convert(Array{Cdouble}, col_lower)
+    col_upper = convert(Array{Cdouble}, col_upper)
+    offset = convert(Cdouble, offset)
+    row_lower = convert(Array{Cdouble}, row_lower)
+    row_upper = convert(Array{Cdouble}, row_upper)
+    a_start = convert(Array{Cint}, a_start)
+    a_index = convert(Array{Cint}, a_index)
+    a_value = convert(Array{Cdouble}, a_value)
 
-        status = HiGHS.Highs_passLp(
-            model,
-            n_col,
-            n_row,
-            n_nz,
-            HiGHS.kHighsMatrixFormatColwise,
-            HiGHS.kHighsObjSenseMinimize,
-            offset,
-            col_cost,
-            col_lower,
-            col_upper,
-            row_lower,
-            row_upper,
-            a_start,
-            a_index,
-            a_value
-        )
+    status = HiGHS.Highs_passLp(
+        model,
+        n_col,
+        n_row,
+        n_nz,
+        HiGHS.kHighsMatrixFormatColwise,
+        HiGHS.kHighsObjSenseMinimize,
+        offset,
+        col_cost,
+        col_lower,
+        col_upper,
+        row_lower,
+        row_upper,
+        a_start,
+        a_index,
+        a_value
+    )
 
-        if status != HiGHS.kHighsStatusOk
-            throw(error("Failed passing model to HiGHS!"))
+    if status != HiGHS.kHighsStatusOk
+        if verbosity > 1
+            print("Failed passing model to HiGHS!\n")
         end
 
-        if HiGHS.Highs_run(model) != HiGHS.kHighsStatusOk
-            throw(error("Failed LP solve!"))
-        end
-
-        model_status = HiGHS.Highs_getModelStatus(model)
-        is_solved = model_status[] == HiGHS.kHighsModelStatusOptimal
-
-        # The vector x is col_value, the vector of duals for the variables x is col_dual
-        col_value, col_dual =
-            (Array{Cdouble,1}(undef, n_col), Array{Cdouble,1}(undef, n_col))
-        # The vector g is row_value, the vector of duals for the variables g is row_dual
-        row_value, row_dual =
-            (Array{Cdouble,1}(undef, n_row), Array{Cdouble,1}(undef, n_row))
-
-        HiGHS.Highs_getSolution(model, col_value, col_dual, row_value, row_dual)
-
-        primal_sol_status = Ref{Cint}(0)
-        dual_sol_status = Ref{Cint}(0)
-        HiGHS.Highs_getIntInfoValue(model, "primal_solution_status", primal_sol_status)
-        HiGHS.Highs_getIntInfoValue(model, "dual_solution_status", dual_sol_status)
-
-        is_Λ_feasible = primal_sol_status[] == HiGHS.kHighsSolutionStatusFeasible
-        is_Λ_dual_feasible = dual_sol_status[] == HiGHS.kHighsSolutionStatusFeasible
-
-        (is_solved, is_Λ_feasible, is_Λ_dual_feasible, col_value, col_dual, row_value, row_dual)
+        return false
     end
 
-    solve
+    if HiGHS.Highs_run(model) != HiGHS.kHighsStatusOk
+        if verbosity > 1
+            print("Failed running the model!\n")
+        end
+
+        return false
+    end
+
+    model_status = HiGHS.Highs_getModelStatus(model)
+    is_solved = model_status[] == HiGHS.kHighsModelStatusOptimal
+
+    # The vector x is col_value, the vector of duals for the variables x is col_dual
+    col_value, col_dual =
+        (Array{Cdouble,1}(undef, n_col), Array{Cdouble,1}(undef, n_col))
+    # The vector g is row_value, the vector of duals for the variables g is row_dual
+    row_value, row_dual =
+        (Array{Cdouble,1}(undef, n_row), Array{Cdouble,1}(undef, n_row))
+
+    HiGHS.Highs_getSolution(model, col_value, col_dual, row_value, row_dual)
+
+    primal_sol_status = Ref{Cint}(0)
+    dual_sol_status = Ref{Cint}(0)
+    HiGHS.Highs_getIntInfoValue(model, "primal_solution_status", primal_sol_status)
+    HiGHS.Highs_getIntInfoValue(model, "dual_solution_status", dual_sol_status)
+
+    is_Λ_feasible = primal_sol_status[] == HiGHS.kHighsSolutionStatusFeasible
+    is_Λ_dual_feasible = dual_sol_status[] == HiGHS.kHighsSolutionStatusFeasible
+
+    if is_solved && is_Λ_feasible
+        return true
+    else
+        return false
+    end
 end
 
 

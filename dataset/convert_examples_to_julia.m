@@ -4,7 +4,7 @@ addpath(genpath("./Examples/Linear"))
 addpath(genpath("./Examples/Nonlinear"))
 addpath(genpath("./Examples/Simple"))
 
-num_problems = 173 % max 173
+num_problems = 173; % max 173
 
 list_fileID = fopen(strcat("./converted/working_problems_list.jl"),'w');
 fprintf(list_fileID, strcat("problems = [\n"));
@@ -33,10 +33,6 @@ for i = 1:num_problems
 	end
 	
 	prob_fileID = fopen(strcat("./converted/", string(i), "_", probname,'.jl'),'w');
-	
-	%n?::Int64 = 5
-	%n?::Int64 = 5
-	%n::Int64 = n? + n?
 	
 	fprintf(prob_fileID, strcat("function ", probname, "()\n"));
 	fprintf(prob_fileID, strcat("\tn1::Int64 = ", string(dim(1))));
@@ -76,6 +72,7 @@ fprintf(fileID, strcat("\tfunction ", fun_name, "(xy)\n"));
 print_views(fileID, nx, ny)
 fprintf(fileID, "\t"); % tab
 
+% replace x1, y2... etc with x[1], y[2]...
 char_expr = char(expr);
 for j = nx:-1:1
 	char_expr = replace(char_expr, strcat("x", string(j)), strcat("x[", string(j), "]"));
@@ -85,26 +82,17 @@ for j = ny:-1:1
 	char_expr = replace(char_expr, strcat("y", string(j)), strcat("y[", string(j), "]"));
 end
 
-%char_expr = replace(char_expr, '*', ' .* ');
-%char_expr = replace(char_expr, '+', '.+');
-%char_expr = replace(char_expr, '-', '.-');
-%char_expr = replace(char_expr, '^', ' .^');
-%char_expr = replace(char_expr, 'exp(', 'exp.(');
-%char_expr = replace(char_expr, 'cos(', 'cos.(');
-%char_expr = replace(char_expr, 'sin(', 'sin.(');
-
-if is_arr_out & length(expr) < 2 % we expect an array of length 1
+if is_arr_out && length(expr) < 2 % we expect an array of length 1
 	fprintf(fileID, "\t[");
 end
 fprintf(fileID, strcat("\t", char_expr));
-if is_arr_out & length(expr) == 1
+
+if is_arr_out && length(expr) == 1
 	fprintf(fileID, ";");
 end
-if is_arr_out & length(expr) < 2
+if is_arr_out && length(expr) < 2
 	fprintf(fileID, "]");
 end
-%if ~is_arr_out
-%	fprintf(fileID, "[1]");
-%end
+
 fprintf(fileID, "\n\tend\n\n");
 end

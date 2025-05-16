@@ -44,8 +44,8 @@ end
 Ff_optimal = Float64[250; 0; 1]
 
 x_init = [10; 10]
-bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=4);
-sol, _ = solve_bop(bop; x_init, verbosity=4, max_iter=5)
+bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
+sol, _ = solve_bop(bop; x_init, verbosity=5, max_iter=20)
 @info (sol)
 
 OP1 = forrest_solver.OptimizationProblem(2, 1:1, F, G, zeros(3), fill(Inf, 3))
