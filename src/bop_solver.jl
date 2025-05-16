@@ -466,9 +466,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         # we choose a new v arbitrarily
-        if n_J > 1
-            v .= v_arr[end] # arbitrary
-        end
+        #if n_J > 1
+        #    v .= v_arr[2] # arbitrary
+        #end
         # check if v is stable between iterations if it's a valid solution
         dv = v - prev_iter_v
         prev_iter_v .= v
@@ -478,7 +478,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             break
         else
             if verbosity > 3
-                print("Founda new v: ")
+                print("Found new v: ")
             end
             if verbosity > 4
                 display(v)

@@ -14,7 +14,7 @@ optimalish_count = 0
 suboptimalish_count = 0
 
 for prob in problems
-    #if "MitsosBarton2006Ex38" == prob
+    #if "MitsosBarton2006Ex311" == prob
     p = getfield(Main, Symbol(prob))()
 
     bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
