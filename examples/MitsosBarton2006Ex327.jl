@@ -5,6 +5,7 @@ using BilevelOptSolver
 
 n₁::Int64 = 5
 n₂::Int64 = 5
+n::Int64 = n₁ + n₂
 
 function F(xy)
     x = @view xy[1:n₁]
