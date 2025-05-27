@@ -291,11 +291,12 @@ Verbosity:
     5: 
     6: v trace
 """
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0, n_J_max=10)
     iter_count = 0
     is_converged = false
     is_sol_valid = false
     is_success = false
+    rolling_v_idx = 1
 
     x::Vector{Float64} = zeros(bop.nₓ)
     λ = zeros(bop.m₂)
@@ -310,6 +311,11 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     prev_iter_v .= v
 
     is_BOPᵢ_solved = false
+
+    v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J_max]
+    is_Λ_feasible_arr = fill(false, n_J_max)
+    is_BOPᵢ_solved_arr = fill(false, n_J_max)
+
 
     while !is_converged
         iter_count += 1
@@ -340,19 +346,24 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                 if verbosity > 1
                     print("Resetting x to a bilevel feasible point. \n")
                 end
-                x₁, x₂, success = find_bilevel_feas_pt(bop; x_init=x)
 
-                if success
+                x, bilevel_feas_success = find_bilevel_feas_pt(bop; x_init=x)
+
+                if bilevel_feas_success
                     x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
                 else
-                    @error("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).")
+                    if verbosity > 0
+                        print("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
+                    end
                 end
             end
 
             if is_follow_nlp_solved
-                v = [x₁; x₂; λ; s]
+                v .= [x₁; x₂; λ; s]
             else
-                @error "Failed to solve for the follower's NLP"
+                if verbosity > 0
+                    print("Failed to solve for the follower's NLP.\n")
+                end
                 break
             end
         end
@@ -367,7 +378,15 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             print("\n")
         end
 
-        follow_feas_Js = find_follow_feas_ind_sets(bop, v)
+        follow_feas_Js = []
+        try
+            follow_feas_Js = find_follow_feas_ind_sets(bop, v)
+        catch e
+            if verbosity > 0
+                print("invalid v: cannot find follower feasible sets: $e")
+            end
+            break
+        end
         n_J = length(follow_feas_Js)
 
         if verbosity > 1
@@ -376,9 +395,11 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             end
         end
 
-        v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J]
-        is_Λ_feasible_arr = fill(false, n_J)
-        is_BOPᵢ_solved_arr = fill(false, n_J)
+        for i in 1:n_J
+            v_arr[i] .= zeros(bop.nᵥ)
+        end
+        is_Λ_feasible_arr[1:n_J] .= false
+        is_BOPᵢ_solved_arr[1:n_J] .= false
 
         for (i, Ji) in enumerate(follow_feas_Js)
             Ji_bounds = convert_J_to_bounds(Ji, bop)
@@ -410,7 +431,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             end
         end
 
-        if all(is_Λ_feasible_arr) && any(.!is_BOPᵢ_solved_arr)
+        if all(is_Λ_feasible_arr[1:n_J]) && any(.!is_BOPᵢ_solved_arr[1:n_J])
             if verbosity > 1
                 print("There exists Λ for all ($n_J) follower feasible index sets.\n")
             end
@@ -421,6 +442,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                 if !is_BOPᵢ_solved_arr[i]
                     v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
                     if is_BOPᵢ_solved
+                        if verbosity > 2
+                            print("$i: BOPᵢ solved.\n")
+                        end
                         is_BOPᵢ_solved_arr[i] = true
                         v_arr[i] .= v
                     end
@@ -428,8 +452,8 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             end
         end
 
-        if !all(is_BOPᵢ_solved_arr)
-            if !any(is_BOPᵢ_solved_arr)
+        if !all(is_BOPᵢ_solved_arr[1:n_J])
+            if !any(is_BOPᵢ_solved_arr[1:n_J])
                 # oh no, we have no valid v, maybe try again?
                 if verbosity > 0
                     is_sol_valid = false
@@ -438,7 +462,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                 continue
             end
 
-            for (i, _) in enumerate(is_BOPᵢ_solved_arr)
+            for (i, _) in enumerate(is_BOPᵢ_solved_arr[1:n_J])
                 # we have some potentially valid solutions to choose from
                 if is_BOPᵢ_solved_arr[i]
                     v = v_arr[i]
@@ -465,11 +489,10 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
         if n_J > 1
             for i in 2:n_J
-                x_err = v_arr[i][1:bop.nₓ] - v_arr[1][1:bop.nₓ] # only checking x error
-
-                if (LinearAlgebra.norm(x_err) > tol)
+                norm_x_err = LinearAlgebra.norm(v_arr[i][1:bop.nₓ] - v_arr[1][1:bop.nₓ]) # only checking x error
+                if (norm_x_err > tol)
                     if verbosity > 1
-                        print("BOPᵢ solutions disagree!\n")
+                        print("BOPᵢ solutions disagree! norm x err: $norm_x_err\n")
                     end
                     is_sol_valid = false
                     break
@@ -477,10 +500,28 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             end
         end
 
-        # we choose a new v arbitrarily
-        #if n_J > 1
-        #    v .= v_arr[2] # arbitrary
-        #end
+        # TODO: selecting new v 
+        # we choose a new v arbitrarily, if there are multiple choices, we try to select another index every iteration to avoid getting stuck, but it also breaks some solutions. we should check if the solution is valid here
+        check_count = 0
+
+        is_sol_valid, _ = check_is_sol_valid(bop, v_arr[rolling_v_idx])
+        while !is_sol_valid
+            rolling_v_idx += 1
+            if rolling_v_idx > n_J
+                rolling_v_idx = 1
+            end
+            is_sol_valid, _ = check_is_sol_valid(bop, v_arr[rolling_v_idx])
+
+            check_count += 1
+            if check_count >= n_J
+                if verbosity > 0
+                    print("Failed to find a valid solution!\n")
+                end
+                break
+            end
+        end
+        v .= v_arr[rolling_v_idx]
+
         # check if v is stable between iterations if it's a valid solution
         dv = v - prev_iter_v
         prev_iter_v .= v
@@ -510,6 +551,11 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     λ .= v[bop.nₓ+1:bop.nₓ+bop.m₂]
     s .= v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
 
+    # final feasibility check
+    if !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
+        is_sol_valid = false
+    end
+
     is_success = is_converged && is_sol_valid
 
     (; x, is_success, iter_count)
@@ -529,7 +575,7 @@ K[j] =  { j: hⱼ = 0, l < z < u} case 2  : hⱼ active (l ≠ u)
 
 Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3] and J[4]
 """
-function find_follow_feas_ind_sets(bop, v; tol=1e-3)
+function check_is_sol_valid(bop, v; tol=1e-3)
     Gh = zeros(bop.m)
     bop.eval_Gh!(Gh, v)
     h = @view Gh[bop.m₁+1:end]
@@ -560,14 +606,16 @@ function find_follow_feas_ind_sets(bop, v; tol=1e-3)
         K[j] = Kj
     end
     is_sol_valid = !any(isempty.(Kj for Kj in values(K)))
+    is_sol_valid, K
+end
+
+function find_follow_feas_ind_sets(bop, v; tol=1e-3)
+    is_sol_valid, K = check_is_sol_valid(bop, v; tol)
 
     if !is_sol_valid
         throw(error("Not a valid solution!"))
     end
 
-    #if any([length(Ki) for Ki in values(K)] .> 1)
-    #    Main.@infiltrate
-    #end
     # enumerate the ambiguous indexes
     Js = Vector{Dict{Int,Set{Int}}}()
     ambigu_inds = [i for i in 1:bop.mₕ if length(K[i]) > 1]
@@ -724,7 +772,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
 
     x₂ = ipopt_prob.x
     λ = -ipopt_prob.mult_g # convention change!!
-    s = bop.g([x₁; x₂])
+    s::Vector{Float64} = bop.g([x₁; x₂])
 
     (; x₂, λ, s, success, solvestat)
 end
@@ -1030,7 +1078,7 @@ Find x such that
 function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=1000, verbosity=0)
     # no need to do anything if it's already feasible
     if all(bop.G(x_init) .≥ -tol) && all(bop.g(x_init) .≥ -tol)
-        return x_init
+        return (; x=x_init, success=true)
     end
 
     x_lower_bound = fill(-Inf, bop.nₓ)
@@ -1109,7 +1157,7 @@ function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10
 
     success = solvestat == 0 || solvestat == 1
 
-    x₁ = ipopt_prob.x[1:bop.n₁]
-    x₂ = ipopt_prob.x[bop.n₁+1:bop.n₁+bop.n₂]
-    (; x₁, x₂, success)
+    x = ipopt_prob.x[1:bop.nₓ]
+
+    (; x, success)
 end

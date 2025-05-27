@@ -1,5 +1,4 @@
 using BilevelOptSolver
-# MitsosBarton2006Ex328using BilevelOptSolver
 
 include("../src/forrest_solver.jl")
 using .forrest_solver
