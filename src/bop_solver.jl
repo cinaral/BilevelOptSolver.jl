@@ -335,7 +335,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             x = @view v[1:bop.nₓ]
             x₁ = @view x[1:bop.n₁]
             x₂ = @view x[bop.n₁+1:bop.n₁+bop.n₂]
-        
+
             x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
 
             # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
@@ -416,7 +416,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             end
 
             # if we can't confirm there exists a feasible Λ at this J, we need to update v:
-            if !is_Λ_feasible   
+            if !is_Λ_feasible
                 v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
 
                 if is_BOPᵢ_solved
@@ -431,9 +431,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         if all(is_Λ_feasible_arr[1:n_J])
-            #if verbosity > 1
-            #    print("There exists Λ for all ($n_J) follower feasible index sets.\n")
-            #end
+            if verbosity > 4
+                print("There exists Λ for all ($n_J) follower feasible index sets.\n")
+            end
 
             # compute the remaining BOPᵢ solutions to ensure the solution is valid
             for (i, Ji) in enumerate(follow_feas_Js)
@@ -794,6 +794,12 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     v_u .= bop.v_u₀
     Gh_l .= bop.Gh_l₀
     Gh_u .= bop.Gh_u₀
+    # to warm-start:
+    is_warm = false
+    mult_g = zeros(bop.m)
+    mult_x_L = zeros(bop.nᵥ)
+    mult_x_U = zeros(bop.nᵥ)
+
 
     nele_jac_g = length(bop.eval_∇ᵥGh.rows)
     nele_hess = length(bop.eval_∇²ᵥL.rows)
@@ -861,8 +867,19 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
         Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
         Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
 
-        ipopt_prob.x = v_init
+        ipopt_prob.x .= v_init
+        if is_warm
+            ipopt_prob.mult_g .= mult_g
+            ipopt_prob.mult_x_L .= mult_x_L
+            ipopt_prob.mult_x_U .= mult_x_U
+        end
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
+        if !is_warm
+            is_warm = true
+        end
+        mult_g .= ipopt_prob.mult_g
+        mult_x_L .= ipopt_prob.mult_x_L
+        mult_x_U .= ipopt_prob.mult_x_U
 
         success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level, note Λ is not valid if Solved_To_Acceptable_level because the gradient of lagrangian is not zero
 
@@ -871,6 +888,10 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
         (; v, Λ, success, ipopt_prob)
     end
     solve
+end
+
+function setup_BOPᵢ_NLP_PATH(bop; tol=1e-6, max_iter=1000, verbosity=0)
+
 end
 
 """
