@@ -281,6 +281,16 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     )
 end
 
+"""
+Verbosity:
+    0: off
+    1: minimum: iterations
+    2: 
+    3:
+    4:
+    5: 
+    6: v trace
+"""
 function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0)
     iter_count = 0
     is_converged = false
@@ -315,12 +325,14 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             print("--Iteration $iter_count\n")
         end
 
+
         if !is_BOPᵢ_solved
             # if BOPᵢ wasn't solved the low level solution may be invalid, and we  to call the follower nlp
             x = @view v[1:bop.nₓ]
             x₁ = @view x[1:bop.n₁]
             x₂ = @view x[bop.n₁+1:bop.n₁+bop.n₂]
-
+        
+            #Main.@infiltrate
             x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
 
             # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
@@ -627,6 +639,8 @@ s.t.    y_l ≤ y ≤ y_u
 This may return bilevel infeasible x₂, but we only use this to find a guess for the λ_init for the feasible index sets.
 """
 function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_iter=1000, verbosity=0)
+    x = zeros(bop.nₓ)
+    x[1:bop.n₁] .= x₁
     y_l = bop.v_l₀[bop.n₁+1:bop.n₁+bop.n₂]
     y_u = bop.v_u₀[bop.n₁+1:bop.n₁+bop.n₂]
     g_l = fill(0.0, bop.m₂)
@@ -635,17 +649,17 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
     nele_hess = length(bop.eval_∇²ₓ₂L_follow.rows)
 
     function eval_f(y::Vector{Float64})
-        x = [x₁; y]
+        x[bop.n₁+1:bop.nₓ] .= y
         bop.eval_f(x)
     end
 
     function eval_g(y::Vector{Float64}, g::Vector{Float64})
-        x = [x₁; y]
+        x[bop.n₁+1:bop.nₓ] .= y
         bop.eval_g!(g, x)
     end
 
     function grad_f(y::Vector{Float64}, grad_f::Vector{Float64})
-        x = [x₁; y]
+        x[bop.n₁+1:bop.nₓ] .= y
         bop.eval_∇ₓ₂f!(grad_f, x)
     end
 
@@ -671,7 +685,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
             rows .= bop.eval_∇²ₓ₂L_follow.rows
             cols .= bop.eval_∇²ₓ₂L_follow.cols
         else
-            x = [x₁; y]
+            x[bop.n₁+1:bop.nₓ] .= y
             bop.eval_∇²ₓ₂L_follow.vals(values, x, obj_factor, λ)
 
         end
@@ -695,8 +709,11 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
     Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
     Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
     Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
+    #Ipopt.set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+    #Ipopt.set_attribute(model, "linear_solver", "ma86")
 
     ipopt_prob.x = y_init
+    #Main.@infiltrate
     solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
     #if solvestat != 0
@@ -772,10 +789,10 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     end
 
     function solve(Ji_bounds; v_init=zeros(n))
-        v_l[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.z_l
-        v_u[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.z_u
-        Gh_l[bop.m₁+1:bop.m₁+bop.mₕ] = Ji_bounds.h_l
-        Gh_u[bop.m₁+1:bop.m₁+bop.mₕ] = Ji_bounds.h_u
+        v_l[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_l
+        v_u[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_u
+        Gh_l[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_l
+        Gh_u[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_u
 
         ipopt_prob = Ipopt.CreateIpoptProblem(
             bop.nᵥ,

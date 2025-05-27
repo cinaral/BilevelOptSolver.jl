@@ -57,7 +57,7 @@ end
 fprintf(list_fileID, strcat("]\n"));
 fclose(list_fileID);
 
-function [] = print_views(fileID, nx, ny)
+function [] = print_views(fileID)
 fprintf(fileID, strcat("\t\tx = @view xy[1:n1]\n"));
 fprintf(fileID, strcat("\t\ty = @view xy[n1+1:n1+n2]\n"));
 end
@@ -69,7 +69,7 @@ if nargin < 6
 end
 
 fprintf(fileID, strcat("\tfunction ", fun_name, "(xy)\n"));
-print_views(fileID, nx, ny)
+print_views(fileID)
 fprintf(fileID, "\t"); % tab
 
 % replace x1, y2... etc with x[1], y[2]...
