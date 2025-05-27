@@ -284,12 +284,12 @@ end
 """
 Verbosity:
     0: off
-    1: minimum: iterations
-    2: 
-    3:
+    1: minimum: iterations and errors
+    2: basic: number of index sets, infeasible index sets
+    3: show all index sets
     4:
-    5: 
-    6: v trace
+    5: function trace
+    6: full: v trace
 """
 function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0, n_J_max=10)
     iter_count = 0
@@ -316,7 +316,6 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     is_Λ_feasible_arr = fill(false, n_J_max)
     is_BOPᵢ_solved_arr = fill(false, n_J_max)
 
-
     while !is_converged
         iter_count += 1
 
@@ -331,14 +330,12 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             print("--Iteration $iter_count\n")
         end
 
-
         if !is_BOPᵢ_solved
-            # if BOPᵢ wasn't solved the low level solution may be invalid, and we  to call the follower nlp
+            # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
             x = @view v[1:bop.nₓ]
             x₁ = @view x[1:bop.n₁]
             x₂ = @view x[bop.n₁+1:bop.n₁+bop.n₂]
         
-            #Main.@infiltrate
             x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
 
             # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
@@ -369,13 +366,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         # at this point, v should be good for follower's solution
-        if verbosity > 3
+        if verbosity > 5
             print("Computing feasible sets for the follower at v: ")
-        end
-        if verbosity > 4
             display(v)
-        elseif verbosity > 3
-            print("\n")
         end
 
         follow_feas_Js = []
@@ -383,14 +376,20 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             follow_feas_Js = find_follow_feas_ind_sets(bop, v)
         catch e
             if verbosity > 0
-                print("invalid v: cannot find follower feasible sets: $e")
+                print("Invalid v: cannot find follower feasible sets: $e")
             end
             break
         end
+
         n_J = length(follow_feas_Js)
+        if n_J > n_J_max
+            if verbosity > 0
+                print("Too many feasible sets (max: $(n_J_max)): $(n_J)!\n")
+            end
+        end
 
         if verbosity > 1
-            if length(n_J) > 1
+            if n_J > 1
                 print("Multiple feasible sets ($n_J) detected!\n")
             end
         end
@@ -403,38 +402,38 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
         for (i, Ji) in enumerate(follow_feas_Js)
             Ji_bounds = convert_J_to_bounds(Ji, bop)
-
             is_Λ_feasible = check_Λ_LP_feas(bop, v, Ji_bounds) # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v
 
             if is_Λ_feasible
                 is_Λ_feasible_arr[i] = true
                 if verbosity > 2
-                    print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is feasible.\n")
+                    print("i=$i: Feasible J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
                 end
             else
                 if verbosity > 1
-                    print("i=$i: J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4]) is INFEASIBLE!\n")
+                    print("i=$i: INFEASIBLE J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
                 end
             end
 
-            # if we can't confirm there exists a feasible Λ at this J, we need to check and update v:
-            if !is_Λ_feasible
+            # if we can't confirm there exists a feasible Λ at this J, we need to update v:
+            if !is_Λ_feasible   
                 v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
 
                 if is_BOPᵢ_solved
                     if verbosity > 2
-                        print("$i: BOPᵢ solved.\n")
+                        print("i=$i: Λ not feasible, but BOPᵢ solved.\n")
                     end
                     is_BOPᵢ_solved_arr[i] = true
                     v_arr[i] .= v
+                    break
                 end
             end
         end
 
-        if all(is_Λ_feasible_arr[1:n_J]) && any(.!is_BOPᵢ_solved_arr[1:n_J])
-            if verbosity > 1
-                print("There exists Λ for all ($n_J) follower feasible index sets.\n")
-            end
+        if all(is_Λ_feasible_arr[1:n_J])
+            #if verbosity > 1
+            #    print("There exists Λ for all ($n_J) follower feasible index sets.\n")
+            #end
 
             # compute the remaining BOPᵢ solutions to ensure the solution is valid
             for (i, Ji) in enumerate(follow_feas_Js)
@@ -443,7 +442,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                     v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
                     if is_BOPᵢ_solved
                         if verbosity > 2
-                            print("$i: BOPᵢ solved.\n")
+                            print("i=$i: BOPᵢ solved.\n")
                         end
                         is_BOPᵢ_solved_arr[i] = true
                         v_arr[i] .= v
@@ -470,7 +469,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                     if verbosity > 3
                         print("v updated: ")
                     end
-                    if verbosity > 4
+                    if verbosity > 5
                         display(v)
                     elseif verbosity > 3
                         print("\n")
@@ -533,7 +532,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             if verbosity > 3
                 print("Found new v: ")
             end
-            if verbosity > 4
+            if verbosity > 5
                 display(v)
             elseif verbosity > 3
                 print("\n")
