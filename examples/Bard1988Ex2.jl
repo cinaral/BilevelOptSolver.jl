@@ -24,7 +24,7 @@ function G(xx)
         5 - x[2]
         15 - x[3]
         20 - x[4]
-        x[1]
+        x[1] 
         x[2]
         x[3]
         x[4]
@@ -58,15 +58,15 @@ end
 
 x_init = [5.0; 5; 15; 15; 0; 0; 0; 0]
 bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
-sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=1, max_iter=5000)
+sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=0, max_iter=5000)
 if is_success
     @info "success" sol
 end
 
-OP1 = forrest_solver.OptimizationProblem(8, 1:4, F, G, zeros(9), fill(Inf, 9))
-OP2 = forrest_solver.OptimizationProblem(8, 1:4, f, g, zeros(12), fill(Inf, 12))
-bilevel = [OP1; OP2]
-out = forrest_solver.solve(bilevel)
-out = forrest_solver.solve(bilevel, [x_init; zeros(126)])
-sol_forrest = out[1:n]
-@info (sol_forrest)
+#OP1 = forrest_solver.OptimizationProblem(8, 1:4, F, G, zeros(9), fill(Inf, 9))
+#OP2 = forrest_solver.OptimizationProblem(8, 1:4, f, g, zeros(12), fill(Inf, 12))
+#bilevel = [OP1; OP2]
+#out = forrest_solver.solve(bilevel)
+#out = forrest_solver.solve(bilevel, [x_init; zeros(126)])
+#sol_forrest = out[1:n]
+#@info (sol_forrest)

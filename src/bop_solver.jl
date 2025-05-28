@@ -756,8 +756,8 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
     Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
     Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
     Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
-    #Ipopt.set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-    #Ipopt.set_attribute(model, "linear_solver", "ma86")
+    Ipopt.AddIpoptStrOption(ipopt_prob, "hsllib", HSL_jll.libhsl_path)
+    Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma27")
 
     ipopt_prob.x = y_init
     #Main.@infiltrate
@@ -866,6 +866,8 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
         Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
         Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
         Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
+        Ipopt.AddIpoptStrOption(ipopt_prob, "hsllib", HSL_jll.libhsl_path)
+        Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma27")
 
         ipopt_prob.x .= v_init
         if is_warm
@@ -873,6 +875,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
             ipopt_prob.mult_x_L .= mult_x_L
             ipopt_prob.mult_x_U .= mult_x_U
         end
+        #Main.@infiltrate
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
         if !is_warm
             is_warm = true

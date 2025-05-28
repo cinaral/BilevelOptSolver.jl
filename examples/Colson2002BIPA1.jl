@@ -45,7 +45,7 @@ Ff_optimal = Float64[250; 0; 1]
 
 x_init = [10; 10]
 bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
-sol, is_success, iter_count = solve_bop(bop; verbosity=2)
+sol, is_success, iter_count = @btime solve_bop(bop; x_init, verbosity=0)
 if is_success
     @info "success" sol
 end
@@ -54,6 +54,6 @@ OP1 = forrest_solver.OptimizationProblem(2, 1:1, F, G, zeros(3), fill(Inf, 3))
 OP2 = forrest_solver.OptimizationProblem(2, 1:1, f, g, zeros(3), fill(Inf, 3))
 bilevel = [OP1; OP2]
 #out = forrest_solver.solve(bilevel)
-out = forrest_solver.solve(bilevel, [x_init; zeros(33)])
+out = @btime  forrest_solver.solve(bilevel, [x_init; zeros(33)])
 sol_forrest = out[1:n]
 @info (sol_forrest)

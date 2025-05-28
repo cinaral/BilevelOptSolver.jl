@@ -1,5 +1,5 @@
 using BilevelOptSolver
-
+using BenchmarkTools
 #include("../src/forrest_solver.jl")
 #using .forrest_solver
 
@@ -41,7 +41,7 @@ Ff_optimal = [-1.0; 1; 1]
 xy_optimal = [-1.0, -1, 0]
 
 bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
-sol, is_success, iter_count = solve_bop(bop; x_init=xy_init, verbosity=5, max_iter=5)
+sol, is_success, iter_count = @btime solve_bop(bop; x_init=xy_init, verbosity=0)
 if is_success
     @info "success" sol
 end

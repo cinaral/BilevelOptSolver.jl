@@ -4,6 +4,11 @@ using Ipopt
 using BenchmarkTools
 using ProfileView
 
+import Pkg
+Pkg.develop(path = "./HSL_jll.jl.v2024.11.28")
+
+import HSL_jll
+
 # example from
 # https://nlopt.readthedocs.io/en/latest/NLopt_Tutorial/#example-nonlinearly-constrained-problem
 n::Int64 = 2
@@ -57,7 +62,7 @@ end
 
 function create_ipopt(prob; tol=1e-6, max_iter=1000, verbosity=5)
     x = zeros(prob.n)
-    x_l = [-Inf; -Inf]
+    x_l = [-Inf; 0]
     x_u = fill(Inf, prob.n)
     g_l = fill(0.0, prob.m)
     g_u = fill(Inf, prob.m)
@@ -119,14 +124,12 @@ function create_ipopt(prob; tol=1e-6, max_iter=1000, verbosity=5)
     Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
     Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
     Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
-    #Ipopt.set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-    #Ipopt.set_attribute(model, "linear_solver", "ma86")
-    #Main.@infiltrate
+    Ipopt.AddIpoptStrOption(ipopt_prob, "hsllib", HSL_jll.libhsl_path)
+    Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma97")
 
-	function solve(x_l_new; x_init=zeros(n))
-		x_l .= x_l_new
+	function solve(x_init=zeros(n))
 		ipopt_prob.x = x_init
-		Main.@infiltrate
+		#Main.@infiltrate
 		solvestat = Ipopt.IpoptSolve(ipopt_prob)
 		(; ipopt_prob.x, status=solvestat)
 	end
