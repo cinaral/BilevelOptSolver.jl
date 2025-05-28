@@ -104,6 +104,12 @@ struct BilevelOptProb
     eval_∇ᵥF!::Function  # eval_∇ᵥF!(out, v)
     eval_∇ᵥGh            # (; shape, rows, cols, vals!(out, v))
     eval_∇²ᵥL # (; shape, rows, cols, vals!(out, v, σf, Λ = [Λ₁; Λₕ])), WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥGh(v)  
+    # used for solving BOPᵢ using PATH solver
+    n_path::Int
+    eval_F_path!::Function
+    eval_J_path # (; shape, rows, cols, vals!(out, v, σf, Λ = [Λ₁; Λₕ]))
+    F_path_l₀::Vector{Float64}
+    F_path_u₀::Vector{Float64}
     # used for solving follower's NLP
     eval_f::Function    # eval_f(x)
     eval_g!::Function    # eval_g!(out, x)
@@ -195,6 +201,34 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     eval_∇²ᵥL_vals! = Symbolics.build_function(∇²ᵥL_vals, v, obj_factor, Λ; expression=Val{false})[2]
     eval_∇²ᵥL = (; shape=size(∇²ᵥL), rows=∇²ᵥL_rows, cols=∇²ᵥL_cols, vals=eval_∇²ᵥL_vals!) # hessian of L
 
+    # for solving BOPᵢ using PATH solver
+    r = Symbolics.@variables(r[1:m])[1] |> Symbolics.scalarize # slacks for Gh
+    Gh_w_slack = Gh .- r
+
+    θ = [v; Λ; r]
+    n_path = length(θ)
+    L_path = F_sym + Gh' * Λ
+    ∇ᵥL_path = Symbolics.gradient(L_path, v)
+    F_path = Num[∇ᵥL_path; Gh_w_slack; Λ]
+
+    eval_F_path! = Symbolics.build_function(F_path, θ; expression=Val(false))[2]
+    J_path = Symbolics.sparsejacobian(F_path, θ)
+
+    (J_path_rows, J_path_cols, J_path_vals) = SparseArrays.findnz(J_path)
+    eval_J_path_vals! = Symbolics.build_function(J_path_vals, θ; expression=Val{false})[2]
+    eval_J_path = (; shape=size(J_path), rows=J_path_rows, cols=J_path_cols, vals=eval_J_path_vals!)
+
+    F_path_l₀ = [
+        fill(-Inf, length(∇ᵥL_path))
+        fill(-Inf, length(Gh_w_slack))
+        Gh_l₀
+    ]
+    F_path_u₀ = [
+        fill(+Inf, length(∇ᵥL_path))
+        fill(+Inf, length(Gh_w_slack))
+        Gh_u₀
+    ]
+
     # used for solving follower's NLP
     eval_f = Symbolics.build_function(f_sym, x_sym; expression=Val{false})
     eval_g! = Symbolics.build_function(g_sym, x_sym; expression=Val{false})[2]
@@ -270,6 +304,11 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
         eval_∇ᵥF!,
         eval_∇ᵥGh,
         eval_∇²ᵥL,
+        n_path,
+        eval_F_path!,
+        eval_J_path,
+        F_path_l₀,
+        F_path_u₀,
         eval_f,
         eval_g!,
         eval_∇ₓ₂f!,
@@ -277,7 +316,7 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
         eval_∇²ₓ₂L_follow,
         eval_Gg!,
         eval_∇ₓGg,
-        eval_∇²ₓL_feas
+        eval_∇²ₓL_feas,
     )
 end
 
@@ -306,6 +345,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     v[1:bop.nₓ] .= x_init[1:bop.nₓ]
 
     solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
+    solve_BOPᵢ_path = setup_BOPᵢ_PATH(bop)
+    # TODO: use this instead and set J inds here
+    aa = solve_BOPᵢ_path([])
 
     prev_iter_v = zeros(bop.nᵥ)
     prev_iter_v .= v
@@ -760,12 +802,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
     Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma27")
 
     ipopt_prob.x = y_init
-    #Main.@infiltrate
     solvestat = Ipopt.IpoptSolve(ipopt_prob)
-
-    #if solvestat != 0
-    #    throw(error("Failed to solve follower NLP, problem may be infeasible for given x₁"))
-    #end
 
     success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level, note Λ is not valid if Solved_To_Acceptable_level because the gradient of lagrangian is not zero
 
@@ -875,7 +912,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
             ipopt_prob.mult_x_L .= mult_x_L
             ipopt_prob.mult_x_U .= mult_x_U
         end
-        #Main.@infiltrate
+
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
         if !is_warm
             is_warm = true
@@ -893,8 +930,78 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     solve
 end
 
-function setup_BOPᵢ_NLP_PATH(bop; tol=1e-6, max_iter=1000, verbosity=0)
+function setup_BOPᵢ_PATH(bop; tol=1e-6, max_iter=1000, verbosity=0)
+    n = bop.n_path
+    nnz_total = length(bop.eval_J_path.rows)
+    J_shape = sparse(bop.eval_J_path.rows, bop.eval_J_path.cols, ones(Cdouble, nnz_total), n, n)
+    J_col = J_shape.colptr[1:end-1]
+    J_len = diff(J_shape.colptr)
+    J_row = J_shape.rowval
+    #θF = copy(θ)
 
+    function F(n, θ, result)
+        result .= 0.0
+        bop.eval_F_path!(result, θ)
+        Cint(0)
+    end
+    function J(n, nnz, θ, col, len, row, data)
+        data .= 0.0
+        bop.eval_J_path.vals(data, θ)
+        col .= J_col
+        len .= J_len
+        row .= J_row
+        Cint(0)
+    end
+
+    F_l = bop.F_path_l₀
+    F_u = bop.F_path_u₀
+
+    function solve(Ji_bounds; θ_init=zeros(n))
+        #f = zero(θ_init)
+        #F(n, θ_init, f)
+        #already_solved = check_mcp_sol(f, z, mcp.l, mcp.u)
+        #if already_solved
+        #    return (; status=:success, info="problem solved at initialization")
+        #end
+
+        #v_l[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_l
+        #v_u[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_u
+        #Gh_l[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_l
+        #Gh_u[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_u
+
+        PATHSolver.c_api_License_SetString("2830898829&Courtesy&&&USR&45321&5_1_2021&1000&PATH&GEN&31_12_2025&0_0_0&6000&0_0")
+        status, θ_out, info = PATHSolver.solve_mcp(
+            F,
+            J,
+            F_l,
+            F_u,
+            θ_init;
+            silent=true,
+            nnz=nnz_total,
+            jacobian_structure_constant=true,
+            jacobian_data_contiguous=true,
+            cumulative_iteration_limit=20_000,
+            major_iteration_limit=500,
+            time_limit=5,
+            convergence_tolerance=1e-6,
+            lemke_rank_deficiency_iterations=30, # fixes silent crashes " ** SOLVER ERROR ** Lemke: invertible basis could not be computed."
+            preprocess=1,
+            presolve=1,
+            output=0,
+            output_options=0,
+            output_errors=0,
+            output_warnings=0,
+            output_final_summary=1
+        )
+
+        if status != PATHSolver.MCP_Solved
+            throw(error("oop"))
+        end
+
+
+
+        (; θ_out, status, info)
+    end
 end
 
 """

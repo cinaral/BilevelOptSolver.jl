@@ -5,6 +5,7 @@ using HiGHS
 using Symbolics
 using SparseArrays
 using LinearAlgebra
+using PATHSolver
 import Pkg
 Pkg.develop(path="./HSL_jll.jl.v2024.11.28")
 import HSL_jll
