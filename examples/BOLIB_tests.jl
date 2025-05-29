@@ -14,9 +14,9 @@ optimalish_count = 0
 suboptimalish_count = 0
 bops = []
 sols = []
-successes = []
+success_arr = []
 iter_counts = []
-run_times = []
+elapsed_arr = []
 
 for prob in problems
     #if "TuyEtal2007Ex3" == prob
@@ -26,14 +26,14 @@ for prob in problems
     # dry runs for @time...
     solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=false)
     solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
-    run_time = @elapsed begin
+    elapsed_time = @elapsed begin
         sol, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
     end
     push!(bops, bop)
     push!(sols, sol)
-    push!(successes, is_success)
     push!(iter_counts, iter_count)
-    push!(run_times, run_time)
+    push!(success_arr, is_success)
+    push!(elapsed_arr, elapsed_time)
 
     if is_success
         global converged_count += 1
@@ -66,9 +66,19 @@ for prob in problems
         print("$prob_count\t $prob\tFailed to converge")
     end
 
-    print("\tElapsed: $(run_time) s\n")
+    print("\tElapsed: $(elapsed_time) s\n")
     global prob_count += 1
     #end
 end
 prob_count -= 1
-print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\n")
+
+success_elapsed_sum = 0
+n_success = 0
+for (i, is_success) in enumerate(success_arr)
+    if is_success
+        global success_elapsed_sum += elapsed_arr[i]
+    end
+    global n_success += 1
+end
+
+print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\nElapsed min/max (s): $(minimum(elapsed_arr))/$(maximum(elapsed_arr)), success mean elapsed (s): $(success_elapsed_sum/n_success)")
