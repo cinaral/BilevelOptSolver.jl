@@ -22,13 +22,13 @@ for prob in problems
     p = getfield(Main, Symbol(prob))()
 
     bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
-    sol, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=0)
+    sol, is_success, iter_count = @time solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=1, is_using_PATH=true)
     push!(bops, bop)
     push!(sols, sol)
     push!(successes, is_success)
     push!(iter_counts, iter_count)
 
-    if is_success
+    if is_success1
         global converged_count += 1
         print("$prob_count\t $prob\t $(iter_count) iterations:\t ")
 

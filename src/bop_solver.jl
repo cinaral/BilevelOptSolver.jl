@@ -95,8 +95,10 @@ struct BilevelOptProb
     nᵥ::Int  # nₓ + m₂ + m₂, length(v)
     m::Int   # m₁ + mₕ, length(Λ) = length([G(v); h(v)])
     mₕ::Int   # n₂ + m₂ + m₂, length(h(v))
+    v_inds::Dict{String,UnitRange{Int64}} # indexing v
     v_l₀::Vector{Float64} # default v bounds 
     v_u₀::Vector{Float64}
+    Gh_inds::Dict{String,UnitRange{Int64}} # indexing Gh
     Gh_l₀::Vector{Float64} # default Gh bounds
     Gh_u₀::Vector{Float64}
     eval_F::Function     # F(v)
@@ -105,11 +107,12 @@ struct BilevelOptProb
     eval_∇ᵥGh            # (; shape, rows, cols, vals!(out, v))
     eval_∇²ᵥL # (; shape, rows, cols, vals!(out, v, σf, Λ = [Λ₁; Λₕ])), WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥGh(v)  
     # used for solving BOPᵢ using PATH solver
-    n_path::Int
+    n_θ::Int
+    θ_inds::Dict{String,UnitRange{Int64}} # indexing θ := [v; Λ; r]
+    θ_l₀::Vector{Float64}
+    θ_u₀::Vector{Float64}
     eval_F_path!::Function
     eval_J_path # (; shape, rows, cols, vals!(out, v, σf, Λ = [Λ₁; Λₕ]))
-    F_path_l₀::Vector{Float64}
-    F_path_u₀::Vector{Float64}
     # used for solving follower's NLP
     eval_f::Function    # eval_f(x)
     eval_g!::Function    # eval_g!(out, x)
@@ -147,15 +150,8 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     λ_sym = Symbolics.@variables(λ[1:m₂])[1] |> Symbolics.scalarize
     s_sym = Symbolics.@variables(s[1:m₂])[1] |> Symbolics.scalarize
 
-    z = [x₂; λ_sym; s_sym]
-    @assert(mₕ == length(z))
-
-    v = [x₁; z]
-    @assert(nᵥ == length(v))
-
     ∇ₓ₂f = Symbolics.gradient(f_sym, x₂)
     ∇ₓ₂g = Symbolics.sparsejacobian(g_sym, x₂)
-
     if isempty(λ_sym)
         h = [∇ₓ₂f; g_sym - s_sym; λ_sym]
     else
@@ -163,23 +159,40 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     end
     @assert(mₕ == length(h))
 
+    # z = [x₂; λ; s]
+    z = [x₂; λ_sym; s_sym]
+    @assert(mₕ == length(z))
+
     # h(v) ⟂ z_lb ≤ z ≤ z_ub
     # x₂, λ free,  0 ≤ s ≤ s_ubᵢ
-    z_l₀ = [fill(-Inf, n₂ + m₂); zeros(m₂)]
+    z_l₀ = [fill(-Inf, n₂ + m₂); zeros(m₂)] # default z lb
     z_u₀ = fill(Inf, n₂ + m₂ + m₂) # default z ub
     @assert(mₕ == length(z_l₀))
     @assert(mₕ == length(z_u₀))
 
     # v = [x₁; z], x₁ free, z bounds computed later from follower's feasible set 
+    v = [x₁; z]
+    @assert(nᵥ == length(v))
+    v_inds = Dict([ # defined for convenience
+        ("x₁", 1:n₁),
+        ("z", n₁+1:n₁+mₕ),
+        ("x", 1:nₓ),
+        ("x₂", n₁+1:nₓ),
+        ("λ", nₓ+1:nₓ+m₂),
+        ("s", nₓ+m₂+1:nₓ+2*m₂)
+    ])
     v_l₀ = [fill(-Inf, n₁); z_l₀] # if there were any leader x₁ bounds could be added here
     v_u₀ = [fill(Inf, n₁); z_u₀]
-    Gh_l₀ = [fill(0, m₁); zeros(mₕ)]
-    Gh_u₀ = fill(Inf, m)
 
-    eval_F = Symbolics.build_function(F_sym, v; expression=Val{false})
+    Gh_l₀ = zeros(m₁ + mₕ) # default Gh lb
+    Gh_u₀ = [fill(Inf, m₁); zeros(n₂ + m₂); fill(Inf, m₂)] # default Gh ub
 
     Gh = [G_sym; h] # BOPᵢ constraints
     @assert(m == length(Gh))
+    Gh_inds = Dict([("G", 1:m₁), ("h", m₁+1:m₁+mₕ)]) # defined for convenience
+
+    eval_F = Symbolics.build_function(F_sym, v; expression=Val{false})
+
     eval_Gh! = Symbolics.build_function(Gh, v; expression=Val{false})[2]
 
     ∇ᵥF = Symbolics.gradient(F_sym, v)
@@ -191,7 +204,8 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     eval_∇ᵥGh_vals! = Symbolics.build_function(∇ᵥGh_vals, v; expression=Val{false})[2]
     eval_∇ᵥGh = (; shape=size(∇ᵥGh), rows=∇ᵥGh_rows, cols=∇ᵥGh_cols, vals=eval_∇ᵥGh_vals!)
 
-    # Λ(v) would be wrong!! Λ ≠ [Λ₁_sym; z] 
+    # Λ = [Λ₁; Λₕ]
+    # Λ(v) would be wrong btw, v = [x₁; z], and z = Λₕ
     Λ = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
     obj_factor = Symbolics.@variables(σf)[1]
     L = obj_factor * F_sym + Gh' * Λ # WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥ[G(v); h(v)]
@@ -205,11 +219,30 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     r = Symbolics.@variables(r[1:m])[1] |> Symbolics.scalarize # slacks for Gh
     Gh_w_slack = Gh .- r
 
+    # F_path ⟂ θ_l ≤ θ ≤ θ_u
     θ = [v; Λ; r]
-    n_path = length(θ)
+    n_θ = length(θ)
+    θ_inds = Dict([ # defined for convenience
+        ("v" => 1:nᵥ),
+        ("Λ" => nᵥ+1:nᵥ+m),
+        ("Λ₁" => nᵥ+1:nᵥ+m₁),
+        ("Λₕ" => nᵥ+m₁+1:nᵥ+m),
+        ("r" => nᵥ+m+1:nᵥ+2*m),
+        ("z" => n₁+1:n₁+mₕ),
+        ("r₁" => nᵥ+m+1:nᵥ+m+m₁),
+        ("rₕ" => nᵥ+m+m₁+1:nᵥ+2*m),
+    ])
+
+    θ_l₀ = fill(-Inf, n_θ)
+    θ_l₀[θ_inds["z"]] .= z_l₀
+    θ_l₀[θ_inds["Λ₁"]] .= 0
+
+    θ_u₀ = fill(Inf, n_θ)
+    θ_u₀[θ_inds["z"]] .= z_u₀
+
     L_path = F_sym + Gh' * Λ
     ∇ᵥL_path = Symbolics.gradient(L_path, v)
-    F_path = Num[∇ᵥL_path; Gh_w_slack; Λ]
+    F_path = [∇ᵥL_path; Gh_w_slack; Λ]
 
     eval_F_path! = Symbolics.build_function(F_path, θ; expression=Val(false))[2]
     J_path = Symbolics.sparsejacobian(F_path, θ)
@@ -217,17 +250,6 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     (J_path_rows, J_path_cols, J_path_vals) = SparseArrays.findnz(J_path)
     eval_J_path_vals! = Symbolics.build_function(J_path_vals, θ; expression=Val{false})[2]
     eval_J_path = (; shape=size(J_path), rows=J_path_rows, cols=J_path_cols, vals=eval_J_path_vals!)
-
-    F_path_l₀ = [
-        fill(-Inf, length(∇ᵥL_path))
-        fill(-Inf, length(Gh_w_slack))
-        Gh_l₀
-    ]
-    F_path_u₀ = [
-        fill(+Inf, length(∇ᵥL_path))
-        fill(+Inf, length(Gh_w_slack))
-        Gh_u₀
-    ]
 
     # used for solving follower's NLP
     eval_f = Symbolics.build_function(f_sym, x_sym; expression=Val{false})
@@ -295,8 +317,10 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
         nᵥ,
         m,
         mₕ,
+        v_inds,
         v_l₀,
         v_u₀,
+        Gh_inds,
         Gh_l₀,
         Gh_u₀,
         eval_F,
@@ -304,11 +328,12 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
         eval_∇ᵥF!,
         eval_∇ᵥGh,
         eval_∇²ᵥL,
-        n_path,
+        n_θ,
+        θ_inds,
+        θ_l₀,
+        θ_u₀,
         eval_F_path!,
         eval_J_path,
-        F_path_l₀,
-        F_path_u₀,
         eval_f,
         eval_g!,
         eval_∇ₓ₂f!,
@@ -330,7 +355,7 @@ Verbosity:
     5: function trace
     6: full: v trace
 """
-function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0, n_J_max=10)
+function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false)
     iter_count = 0
     is_converged = false
     is_sol_valid = false
@@ -342,12 +367,10 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     s = zeros(bop.m₂)
     v = zeros(bop.nᵥ)
 
-    v[1:bop.nₓ] .= x_init[1:bop.nₓ]
+    v[bop.v_inds["x"]] .= x_init[1:bop.nₓ]
 
-    solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop)
-    solve_BOPᵢ_path = setup_BOPᵢ_PATH(bop)
-    # TODO: use this instead and set J inds here
-    aa = solve_BOPᵢ_path([])
+    solve_BOPᵢ_nlp = setup_BOPᵢ_NLP(bop; verbosity)
+    solve_BOPᵢ_path = setup_BOPᵢ_PATH(bop; verbosity)
 
     prev_iter_v = zeros(bop.nᵥ)
     prev_iter_v .= v
@@ -357,6 +380,8 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
     v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J_max]
     is_Λ_feasible_arr = fill(false, n_J_max)
     is_BOPᵢ_solved_arr = fill(false, n_J_max)
+
+    θ_init = zeros(bop.n_θ)
 
     while !is_converged
         iter_count += 1
@@ -374,9 +399,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
         if !is_BOPᵢ_solved
             # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
-            x = @view v[1:bop.nₓ]
-            x₁ = @view x[1:bop.n₁]
-            x₂ = @view x[bop.n₁+1:bop.n₁+bop.n₂]
+            x = @view v[bop.v_inds["x"]]
+            x₁ = @view v[bop.v_inds["x₁"]]
+            x₂ = @view v[bop.v_inds["x₂"]]
 
             x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
 
@@ -424,16 +449,18 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         n_J = length(follow_feas_Js)
-        if n_J > n_J_max
-            if verbosity > 0
-                print("Too many feasible sets (max: $(n_J_max)): $(n_J)!\n")
-            end
-        end
 
         if verbosity > 1
             if n_J > 1
                 print("Multiple feasible sets ($n_J) detected!\n")
             end
+        end
+
+        if n_J > n_J_max
+            if verbosity > 0
+                print("Too many feasible sets (max: $(n_J_max)): $(n_J)!\n")
+            end
+            n_J = n_J_max
         end
 
         for i in 1:n_J
@@ -442,7 +469,8 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         is_Λ_feasible_arr[1:n_J] .= false
         is_BOPᵢ_solved_arr[1:n_J] .= false
 
-        for (i, Ji) in enumerate(follow_feas_Js)
+        for i in 1:n_J
+            Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
             is_Λ_feasible = check_Λ_LP_feas(bop, v, Ji_bounds) # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v
 
@@ -459,11 +487,18 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
             # if we can't confirm there exists a feasible Λ at this J, we need to update v:
             if !is_Λ_feasible
-                v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # update v
+                if is_using_PATH
+                    θ_init[bop.θ_inds["v"]] .= v
+                    v, θ_out, status = solve_BOPᵢ_path(Ji_bounds; θ_init)
+                    #θ_init .= θ_out
+                    is_BOPᵢ_solved = status == PATHSolver.MCP_Solved
+                else
+                    v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v)
+                end
 
                 if is_BOPᵢ_solved
                     if verbosity > 2
-                        print("i=$i: Λ not feasible, but BOPᵢ solved.\n")
+                        print("i=$i: Λ not feasible, solved KKT conditions of BOPᵢ.\n")
                     end
                     is_BOPᵢ_solved_arr[i] = true
                     v_arr[i] .= v
@@ -478,10 +513,19 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             end
 
             # compute the remaining BOPᵢ solutions to ensure the solution is valid
-            for (i, Ji) in enumerate(follow_feas_Js)
+            for i in 1:n_J
+                Ji = follow_feas_Js[i]
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
                 if !is_BOPᵢ_solved_arr[i]
-                    v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
+                    if is_using_PATH
+                        θ_init[bop.θ_inds["v"]] .= v
+                        v, θ_out, status = solve_BOPᵢ_path(Ji_bounds; θ_init)
+                        is_BOPᵢ_solved = status == PATHSolver.MCP_Solved
+                        #θ_init .= θ_out
+                    else
+                        v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
+                    end
+
                     if is_BOPᵢ_solved
                         if verbosity > 2
                             print("i=$i: BOPᵢ solved.\n")
@@ -492,6 +536,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                 end
             end
         end
+
 
         if !all(is_BOPᵢ_solved_arr[1:n_J])
             if !any(is_BOPᵢ_solved_arr[1:n_J])
@@ -588,12 +633,15 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
     end
 
-    x .= v[1:bop.nₓ]
-    λ .= v[bop.nₓ+1:bop.nₓ+bop.m₂]
-    s .= v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
+    x .= v[bop.v_inds["x"]]
+    #λ .= v[bop.nₓ+1:bop.nₓ+bop.m₂]
+    #s .= v[bop.nₓ+bop.m₂+1:bop.nₓ+bop.m₂+bop.m₂]
 
     # final feasibility check
     if !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
+        if verbosity > 0
+            print("Something went wrong, this solution is not valid!\n")
+        end
         is_sol_valid = false
     end
 
@@ -619,10 +667,12 @@ Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3]
 function check_is_sol_valid(bop, v; tol=1e-3)
     Gh = zeros(bop.m)
     bop.eval_Gh!(Gh, v)
-    h = @view Gh[bop.m₁+1:end]
-    z = @view v[bop.n₁+1:end] # bop.v_inds["z"]
-    z_l = @view bop.v_l₀[bop.n₁+1:end]
-    z_u = @view bop.v_u₀[bop.n₁+1:end]
+    #h = @view Gh[bop.m₁+1:end] # bop.Gh_inds["h"]
+    h = @view Gh[bop.Gh_inds["h"]]
+    #z = @view v[bop.n₁+1:end] # bop.v_inds["z"]
+    z = @view v[bop.v_inds["z"]]
+    z_l = @view bop.v_l₀[bop.v_inds["z"]]
+    z_u = @view bop.v_u₀[bop.v_inds["z"]]
     K = Dict{Int,Vector{Int}}()
 
     # note which constraints are active
@@ -681,8 +731,8 @@ function convert_J_to_bounds(J, bop)
     h_u = zeros(bop.mₕ)
     z_l = zeros(bop.mₕ)
     z_u = zeros(bop.mₕ)
-    z_l₀ = bop.v_l₀[bop.n₁+1:end]
-    z_u₀ = bop.v_u₀[bop.n₁+1:end]
+    z_l₀ = bop.v_l₀[bop.v_inds["z"]]
+    z_u₀ = bop.v_u₀[bop.v_inds["z"]]
 
     for j in J[1] # hⱼ inactive (positive), Λₕⱼ at lb
         h_l[j] = 0.0
@@ -730,25 +780,25 @@ This may return bilevel infeasible x₂, but we only use this to find a guess fo
 function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_iter=1000, verbosity=0)
     x = zeros(bop.nₓ)
     x[1:bop.n₁] .= x₁
-    y_l = bop.v_l₀[bop.n₁+1:bop.n₁+bop.n₂]
-    y_u = bop.v_u₀[bop.n₁+1:bop.n₁+bop.n₂]
+    y_l = bop.v_l₀[bop.v_inds["x₂"]]
+    y_u = bop.v_u₀[bop.v_inds["x₂"]]
     g_l = fill(0.0, bop.m₂)
     g_u = fill(Inf, bop.m₂)
     nele_jac_g = length(bop.eval_∇ₓ₂g.rows)
     nele_hess = length(bop.eval_∇²ₓ₂L_follow.rows)
 
     function eval_f(y::Vector{Float64})
-        x[bop.n₁+1:bop.nₓ] .= y
+        x[bop.v_inds["x₂"]] .= y
         bop.eval_f(x)
     end
 
     function eval_g(y::Vector{Float64}, g::Vector{Float64})
-        x[bop.n₁+1:bop.nₓ] .= y
+        x[bop.v_inds["x₂"]] .= y
         bop.eval_g!(g, x)
     end
 
     function grad_f(y::Vector{Float64}, grad_f::Vector{Float64})
-        x[bop.n₁+1:bop.nₓ] .= y
+        x[bop.v_inds["x₂"]] .= y
         bop.eval_∇ₓ₂f!(grad_f, x)
     end
 
@@ -757,7 +807,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
             rows .= bop.eval_∇ₓ₂g.rows
             cols .= bop.eval_∇ₓ₂g.cols
         else
-            x = [x₁; y]
+            x[bop.v_inds["x₂"]] .= y
             bop.eval_∇ₓ₂g.vals(vals, x)
         end
     end
@@ -774,7 +824,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
             rows .= bop.eval_∇²ₓ₂L_follow.rows
             cols .= bop.eval_∇²ₓ₂L_follow.cols
         else
-            x[bop.n₁+1:bop.nₓ] .= y
+            x[bop.v_inds["x₂"]] .= y
             bop.eval_∇²ₓ₂L_follow.vals(values, x, obj_factor, λ)
 
         end
@@ -837,7 +887,6 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     mult_x_L = zeros(bop.nᵥ)
     mult_x_U = zeros(bop.nᵥ)
 
-
     nele_jac_g = length(bop.eval_∇ᵥGh.rows)
     nele_hess = length(bop.eval_∇²ᵥL.rows)
 
@@ -879,10 +928,10 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
     end
 
     function solve(Ji_bounds; v_init=zeros(n))
-        v_l[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_l
-        v_u[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_u
-        Gh_l[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_l
-        Gh_u[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_u
+        v_l[bop.v_inds["z"]] .= Ji_bounds.z_l
+        v_u[bop.v_inds["z"]] .= Ji_bounds.z_u
+        Gh_l[bop.Gh_inds["h"]] .= Ji_bounds.h_l
+        Gh_u[bop.Gh_inds["h"]] .= Ji_bounds.h_u
 
         ipopt_prob = Ipopt.CreateIpoptProblem(
             bop.nᵥ,
@@ -931,13 +980,12 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
 end
 
 function setup_BOPᵢ_PATH(bop; tol=1e-6, max_iter=1000, verbosity=0)
-    n = bop.n_path
+    n = bop.n_θ
     nnz_total = length(bop.eval_J_path.rows)
     J_shape = sparse(bop.eval_J_path.rows, bop.eval_J_path.cols, ones(Cdouble, nnz_total), n, n)
     J_col = J_shape.colptr[1:end-1]
     J_len = diff(J_shape.colptr)
     J_row = J_shape.rowval
-    #θF = copy(θ)
 
     function F(n, θ, result)
         result .= 0.0
@@ -953,28 +1001,29 @@ function setup_BOPᵢ_PATH(bop; tol=1e-6, max_iter=1000, verbosity=0)
         Cint(0)
     end
 
-    F_l = bop.F_path_l₀
-    F_u = bop.F_path_u₀
+    θ_l = copy(bop.θ_l₀)
+    θ_u = copy(bop.θ_u₀)
 
-    function solve(Ji_bounds; θ_init=zeros(n))
-        #f = zero(θ_init)
-        #F(n, θ_init, f)
-        #already_solved = check_mcp_sol(f, z, mcp.l, mcp.u)
-        #if already_solved
-        #    return (; status=:success, info="problem solved at initialization")
-        #end
+    function solve(Ji_bounds; θ_init=zeros(bop.n_θ))
+        # update bounds based on Ji, this may seem incorrect at first, but it may be actually incorrect
+        θ_l[bop.θ_inds["z"]] .= Ji_bounds.z_l
+        θ_u[bop.θ_inds["z"]] .= Ji_bounds.z_u
+        θ_l[bop.θ_inds["rₕ"]] .= Ji_bounds.h_l
+        θ_u[bop.θ_inds["rₕ"]] .= Ji_bounds.h_u
 
-        #v_l[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_l
-        #v_u[bop.n₁+1:bop.n₁+bop.mₕ] .= Ji_bounds.z_u
-        #Gh_l[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_l
-        #Gh_u[bop.m₁+1:bop.m₁+bop.mₕ] .= Ji_bounds.h_u
+        F_out = zeros(bop.n_θ)
+        F(n, θ_init, F_out)
+        already_solved = check_mcp_sol(F_out, θ_init, θ_l, θ_u)
+        if already_solved
+            return (; v=θ_init[bop.θ_inds["v"]], θ_out=θ_init, status=:success)
+        end
 
         PATHSolver.c_api_License_SetString("2830898829&Courtesy&&&USR&45321&5_1_2021&1000&PATH&GEN&31_12_2025&0_0_0&6000&0_0")
         status, θ_out, info = PATHSolver.solve_mcp(
             F,
             J,
-            F_l,
-            F_u,
+            θ_l,
+            θ_u,
             θ_init;
             silent=true,
             nnz=nnz_total,
@@ -994,14 +1043,39 @@ function setup_BOPᵢ_PATH(bop; tol=1e-6, max_iter=1000, verbosity=0)
             output_final_summary=1
         )
 
-        if status != PATHSolver.MCP_Solved
-            throw(error("oop"))
+        F(n, θ_out, F_out)
+        if !check_mcp_sol(F_out, θ_out, θ_l, θ_u)
+            if verbosity > 0
+                print("Failed to solve MCP!\n")
+            end
         end
 
-
-
-        (; θ_out, status, info)
+        (; v=θ_out[bop.θ_inds["v"]], θ_out, status)
     end
+end
+
+function check_mcp_sol(F, θ, θ_l, θ_u; tol=1e-6)
+    n = length(F)
+    sol = true
+    for i in 1:n
+        if isapprox(θ_l[i], θ_u[i]; atol=tol)
+            continue
+        elseif F[i] ≥ tol && θ[i] < θ_l[i] + tol
+            continue
+        elseif -tol < F[i] < tol && θ[i] < θ_l[i] + tol
+            continue
+        elseif -tol < F[i] < tol && θ_l[i] + tol ≤ θ[i] ≤ θ_u[i] - tol
+            continue
+        elseif -tol < F[i] < tol && θ[i] > θ_u[i] - tol
+            continue
+        elseif F[i] ≤ -tol && θ[i] > θ_u[i] - tol
+            continue
+        else
+            sol = false
+            break
+        end
+    end
+    return sol
 end
 
 """
@@ -1085,11 +1159,11 @@ function check_Λ_LP_feas(bop, v, Ji_bounds; primal_feas_tol=1e-6, zero_tol=1e-3
     row_lower = [∇ᵥF; 0]
     row_upper = [∇ᵥF; 0]
     # TODO: verify this
-    row_lower[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_l
-    row_upper[bop.n₁+1:bop.n₁+bop.mₕ] = Ji_bounds.h_u
+    row_lower[bop.v_inds["z"]] = Ji_bounds.h_l
+    row_upper[bop.v_inds["z"]] = Ji_bounds.h_u
 
     # constraint matrix is column-wise:
-    G = @view Gh[1:bop.m₁]
+    G = @view Gh[bop.Gh_inds["G"]]
     A = vcat(∇ᵥGhb', sparse([G' zeros(bop.mₕ + 2 * bop.nᵥ)'])) # Λ₁ᵀ G = 0 (leader complementarity) added
     a_start = A.colptr[1:end-1] .- 1
     a_index = A.rowval .- 1
@@ -1108,7 +1182,6 @@ function check_Λ_LP_feas(bop, v, Ji_bounds; primal_feas_tol=1e-6, zero_tol=1e-3
     #bop.eval_∇ᵥGh.vals(∇ᵥGh.nzval, v)
 
     #if !all(Gh[bop.m₁+1:end] .≥ Ji_bounds.h_l .- 1e-6) || !all(Gh[bop.m₁+1:end] .≤ Ji_bounds.h_u .+ 1e-6) || !all(Λ[bop.m₁+1:end] .≥ Ji_bounds.z_l .- 1e-6) || !all(Λ[bop.m₁+1:end] .≤ Ji_bounds.z_u .+ 1e-6)
-    #    Main.@infiltrate
     #    @error "invalid solution"
     #end
 
@@ -1118,7 +1191,6 @@ function check_Λ_LP_feas(bop, v, Ji_bounds; primal_feas_tol=1e-6, zero_tol=1e-3
 
 
     #if !all(A * Λ_all .≥ row_lower .- 1e-6) || !all(A * Λ_all .≤ row_upper .+ 1e-6) || !all(Λ_all .≥ col_lower .- 1e-6) || !all(Λ_all .≤ col_upper .+ 1e-6)
-    #    Main.@infiltrate
     #    @error "you have a bug here mate"
     #end
     """
@@ -1287,7 +1359,7 @@ function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10
 
     success = solvestat == 0 || solvestat == 1
 
-    x = ipopt_prob.x[1:bop.nₓ]
+    x = ipopt_prob.x[bop.v_inds["x"]]
 
     (; x, success)
 end
