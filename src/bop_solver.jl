@@ -185,6 +185,7 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     v_u₀ = [fill(Inf, n₁); z_u₀]
 
     Gh_l₀ = zeros(m₁ + mₕ) # default Gh lb
+    #Gh_u₀ = fill(Inf, m) # this may lead to better outcomes??
     Gh_u₀ = [fill(Inf, m₁); zeros(n₂ + m₂); fill(Inf, m₂)] # default Gh ub
 
     Gh = [G_sym; h] # BOPᵢ constraints
@@ -348,10 +349,10 @@ end
 """
 Verbosity:
     0: off
-    1: minimum: iterations and errors
-    2: basic: number of index sets, infeasible index sets
-    3: show all index sets
-    4:
+    1: minimum: warnings and errors
+    2: basic: iterations
+    3: extended: number of index sets, infeasible index sets
+    4: full: show all index sets
     5: function trace
     6: full: v trace
 """
@@ -393,7 +394,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             break
         end
 
-        if verbosity > 0
+        if verbosity > 1
             print("--Iteration $iter_count\n")
         end
 

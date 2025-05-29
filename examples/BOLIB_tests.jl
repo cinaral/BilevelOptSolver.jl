@@ -16,19 +16,26 @@ bops = []
 sols = []
 successes = []
 iter_counts = []
+run_times = []
 
 for prob in problems
     #if "TuyEtal2007Ex3" == prob
     p = getfield(Main, Symbol(prob))()
 
     bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
-    sol, is_success, iter_count = @time solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=1, is_using_PATH=true)
+    # dry runs for @time...
+    solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=false)
+    solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
+    run_time = @elapsed begin
+        sol, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
+    end
     push!(bops, bop)
     push!(sols, sol)
     push!(successes, is_success)
     push!(iter_counts, iter_count)
+    push!(run_times, run_time)
 
-    if is_success1
+    if is_success
         global converged_count += 1
         print("$prob_count\t $prob\t $(iter_count) iterations:\t ")
 
@@ -54,10 +61,12 @@ for prob in problems
         else
             print("no reference solution")
         end
-        print("\n")
+        #print("\n")
     else
-        print("$prob_count\t $prob\tFailed to converge\n")
+        print("$prob_count\t $prob\tFailed to converge")
     end
+
+    print("\tElapsed: $(run_time) s\n")
     global prob_count += 1
     #end
 end
