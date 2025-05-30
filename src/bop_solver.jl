@@ -400,7 +400,6 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
 
         if !is_BOPᵢ_solved
             # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
-            x = @view v[bop.v_inds["x"]]
             x₁ = @view v[bop.v_inds["x₁"]]
             x₂ = @view v[bop.v_inds["x₂"]]
 
@@ -412,7 +411,8 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                     print("Resetting x to a bilevel feasible point. \n")
                 end
 
-                x, bilevel_feas_success = find_bilevel_feas_pt(bop; x_init=x)
+                x_feas, bilevel_feas_success = find_bilevel_feas_pt(bop; x_init=[x₁; x₂])
+                v[bop.v_inds["x"]] .= x_feas
 
                 if bilevel_feas_success
                     x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
@@ -778,7 +778,7 @@ s.t.    y_l ≤ y ≤ y_u
 
 This may return bilevel infeasible x₂, but we only use this to find a guess for the λ_init for the feasible index sets.
 """
-function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_iter=1000, verbosity=0)
+function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_iter=1000, verbosity=0, print_level=0)
     x = zeros(bop.nₓ)
     x[1:bop.n₁] .= x₁
     y_l = bop.v_l₀[bop.v_inds["x₂"]]
@@ -848,7 +848,7 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
     )
     Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
     Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
-    Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
+    Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", print_level)
     Ipopt.AddIpoptStrOption(ipopt_prob, "hsllib", HSL_jll.libhsl_path)
     Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma27")
 
@@ -928,7 +928,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0, is_using_wa
         end
     end
 
-    function solve(Ji_bounds; v_init=zeros(n))
+    function solve(Ji_bounds; v_init=zeros(n), print_level=0)
         v_l[bop.v_inds["z"]] .= Ji_bounds.z_l
         v_u[bop.v_inds["z"]] .= Ji_bounds.z_u
         Gh_l[bop.Gh_inds["h"]] .= Ji_bounds.h_l
@@ -952,7 +952,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0, is_using_wa
 
         Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
         Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
-        Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
+        Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", print_level)
         Ipopt.AddIpoptStrOption(ipopt_prob, "hsllib", HSL_jll.libhsl_path)
         Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma27")
 
@@ -1278,7 +1278,7 @@ Find x such that
     g(x) ≥ 0 
     G(x) ≥ 0 
 """
-function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=1000, verbosity=0)
+function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=1000, verbosity=0, print_level=0)
     # no need to do anything if it's already feasible
     if all(bop.G(x_init) .≥ -tol) && all(bop.g(x_init) .≥ -tol)
         return (; x=x_init, success=true)
@@ -1353,7 +1353,7 @@ function find_bilevel_feas_pt(bop; x_init=zeros(bop.nₓ), tol=1e-6, max_iter=10
 
     Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
     Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
-    Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", verbosity)
+    Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", print_level)
 
     ipopt_prob.x = x_init
     solvestat = Ipopt.IpoptSolve(ipopt_prob)
