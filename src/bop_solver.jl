@@ -872,7 +872,7 @@ min     F(x)
 s.t.    Gh_u ≥ Gh(x) ≥ Gh_l
         v_u ≥ v ≥ v_l
 """
-function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
+function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0, is_using_warmstart=true)
     # these will be overwritten wrt Js, but only the follower's Λₕ=[x₂;λ;s] and h
     v_l = zeros(bop.nᵥ)
     v_u = zeros(bop.nᵥ)
@@ -964,7 +964,7 @@ function setup_BOPᵢ_NLP(bop; tol=1e-6, max_iter=1000, verbosity=0)
         end
 
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
-        if !is_warm
+        if !is_warm && is_using_warmstart
             is_warm = true
         end
         mult_g .= ipopt_prob.mult_g
