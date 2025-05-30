@@ -13,10 +13,10 @@ converged_count = 0
 optimalish_count = 0
 suboptimalish_count = 0
 bops = []
-sols = []
-success_arr = []
-iter_counts = []
-elapsed_arr = []
+sols = Vector{Float64}[]
+success_arr = Bool[]
+iter_counts = Int64[]
+elapsed_arr = Float64[]
 
 for prob in problems
     #if "TuyEtal2007Ex3" == prob
@@ -82,3 +82,11 @@ for (i, is_success) in enumerate(success_arr)
 end
 
 print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\nElapsed min/max (s): $(minimum(elapsed_arr))/$(maximum(elapsed_arr)), success mean elapsed (s): $(success_elapsed_sum/n_success)")
+
+
+succ_elapsed_arr = elapsed_arr[success_arr .== true];
+#import GLMakie
+#fig = GLMakie.Figure()
+#ax = GLMakie.Axis(fig[1, 1], xlabel = "t", xscale=log10)
+#GLMakie.scatter!(ax, succ_elapsed_arr, zeros(length(succ_elapsed_arr)))
+#scatter!(ax, ipopt_elapsed_arr[ipopt_success_arr.==true], ones(length(ipopt_elapsed_arr[ipopt_success_arr.==true])))
