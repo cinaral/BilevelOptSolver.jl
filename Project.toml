@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
+BOLIB = "da8d21e1-f180-4775-86f3-b4c262b3fa63"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 HSL_jll = "017b0a0e-03f4-516a-9b91-836bbd1904dd"
