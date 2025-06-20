@@ -2,8 +2,10 @@
 
 using BilevelOptSolver
 
-BOLIB_dir = "../BOLIB.jl"
-Pkg.develop(path=BOLIB_dir)
+if !haskey(ENV, "BOLIB_PATH")
+    error("You need to obtain [BOLIB.jl](https://github.com/cinaral/BOLIB.jl) and set BOLIB_PATH environment variable to run this example.\n")
+end
+Pkg.develop(path=ENV["BOLIB_PATH"])
 import BOLIB
 
 tol = 1e-3
@@ -39,7 +41,7 @@ for prob in BOLIB.examples
 
     if is_success
         global converged_count += 1
-        print("$prob_count\t $prob\t $(iter_count) iterations:\t ")
+        print("$(prob_count+1)\t $prob\t $(iter_count) iterations:\t ")
 
         if p.Ff_optimal[3] == 1
             if isapprox([p.F(sol); p.f(sol)], p.Ff_optimal[1:2]; rtol=tol)
@@ -83,11 +85,3 @@ for (i, is_success) in enumerate(success_arr)
 end
 
 print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\nOut of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\nElapsed min/max (s): $(minimum(elapsed_arr))/$(maximum(elapsed_arr)), success mean elapsed (s): $(success_elapsed_sum/n_success)")
-
-
-#succ_elapsed_arr = elapsed_arr[success_arr .== true];
-#import GLMakie
-#fig = GLMakie.Figure()
-#ax = GLMakie.Axis(fig[1, 1], xlabel = "t", xscale=log10)
-#GLMakie.scatter!(ax, succ_elapsed_arr, zeros(length(succ_elapsed_arr)))
-#scatter!(ax, ipopt_elapsed_arr[ipopt_success_arr.==true], ones(length(ipopt_elapsed_arr[ipopt_success_arr.==true])))

@@ -31,6 +31,11 @@ bop = construct_bop(n₁, n₂, F, G, f, g);
 sol = solve_bop(bop)
 ```
 
+## (Optional) BOLIB.jl converted test problems from [Bilevel optimization library of test problems (BOLIBver2)](https://biopt.github.io/bolib/) 
+If you would like to run ```examples/BOLIB_tests.jl```, you need to obtain [BOLIB.jl](https://github.com/cinaral/BOLIB.jl) and set BOLIB_PATH environment variable.
+
+As of 2025-06-19, this solver can solve 
+
 ## (Optional) Use HSL solvers with IPOPT
 If you would like to use HSL, please [obtain a license and download HSL_jll.jl](https://licences.stfc.ac.uk/products/Software/HSL/LibHSL), and set HSL_PATH environment variable to the extracted location.
 
