@@ -48,7 +48,7 @@ s.t.    x₁ ∈ Rⁿ¹         (BOPᵢ)
         x₂ ∈ Hᵢ
 ________________________________________________
 
-x₂ ∈ Hᵢ is tricky due to the complamentarity constraints Let v := [x; λ; s], we define: h(v) ⟂ z := [x₂; λ; s]
+x₂ ∈ Hᵢ is tricky due to the complementarity constraints Let v := [x; λ; s], we define: h(v) ⟂ z := [x₂; λ; s]
           [ ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x))  ] = 0                        -∞ ≤ x₂ ≤ ∞    
 h(v) :=   [      g(x, y) - s       ] = 0              ⟂         -∞ ≤ λ ≤ ∞  
           [        λ               ] ≥/=? 0                     0 ≤ s ≤ s_ubᵢ  (upper bounds depend on i)  
@@ -498,9 +498,9 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
             # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
             x₁ = @view v[bop.v_inds["x₁"]]
             x₂ = @view v[bop.v_inds["x₂"]]
-
+           
             x₂, λ, s, is_follow_nlp_solved = solve_follower_nlp(bop, x₁; y_init=x₂)
-
+ 
             # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
             if !is_follow_nlp_solved
                 if verbosity > 1
@@ -536,6 +536,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         end
 
         follow_feas_Js = []
+
         try
             follow_feas_Js = find_follow_feas_ind_sets(bop, v)
         catch e
@@ -569,6 +570,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         for i in 1:n_J
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
+      
             is_Λ_feasible = check_Λ_LP_feas(bop, v, Ji_bounds) # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v
 
             if is_Λ_feasible
@@ -621,6 +623,7 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
                         #θ_init .= θ_out
                     else
                         v, _, is_BOPᵢ_solved = solve_BOPᵢ_nlp(Ji_bounds; v_init=v) # check if it's actually a minimum for all feasible regions
+                        #Main.@infiltrate
                     end
 
                     if is_BOPᵢ_solved
@@ -687,13 +690,13 @@ function solve_bop(bop; x_init=zeros(bop.nₓ), tol=1e-3, max_iter=200, verbosit
         # we choose a new v arbitrarily, if there are multiple choices, we try to select another index every iteration to avoid getting stuck, but it also breaks some solutions. we should check if the solution is valid here
         check_count = 0
 
-        is_sol_valid, _ = check_is_sol_valid(bop, v_arr[rolling_v_idx])
-        while !is_sol_valid
+        is_v_valid, _ = check_is_sol_valid(bop, v_arr[rolling_v_idx])
+        while !is_v_valid
             rolling_v_idx += 1
             if rolling_v_idx > n_J
                 rolling_v_idx = 1
             end
-            is_sol_valid, _ = check_is_sol_valid(bop, v_arr[rolling_v_idx])
+            is_v_valid, _ = check_is_sol_valid(bop, v_arr[rolling_v_idx])
 
             check_count += 1
             if check_count >= n_J
@@ -923,7 +926,6 @@ function solve_follower_nlp(bop, x₁; y_init=zeros(bop.n₂), tol=1e-6, max_ite
         else
             x[bop.v_inds["x₂"]] .= y
             bop.eval_∇²ₓ₂L_follow.vals(values, x, obj_factor, λ)
-
         end
     end
 
