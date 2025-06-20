@@ -1,18 +1,23 @@
 module BilevelOptSolver
 
-using Ipopt
-using HiGHS
 using Symbolics
 using SparseArrays
 using LinearAlgebra
+using Ipopt
 using PATHSolver
-
+using HiGHS
 import Pkg
-Pkg.develop(path="./HSL_jll.jl.v2024.11.28")
-import HSL_jll
 
-include("bop_solver.jl")
+if haskey(ENV, "HSL_PATH")
+    Pkg.develop(path=ENV["HSL_PATH"])
+end
+# uncomment this if you have obtained HSL:
+#import HSL_jll 
+
+
+include("solver_interfaces.jl")
+include("construct_bop.jl")
+include("solve_bop.jl")
 
 export construct_bop, solve_bop
-
 end # module BilevelOptSolver

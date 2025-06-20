@@ -1,7 +1,5 @@
 using BilevelOptSolver
 
-using BenchmarkTools
-
 n₁::Int64 = 1
 n₂::Int64 = 1
 n::Int64 = n₁ + n₂
@@ -37,9 +35,8 @@ function g(x)
     ]
 end
 
-#BilevelOptSolver.generate_derivatives(n₁, n₂, F, G, f, g; verbosity=0)
 bop = construct_bop(n₁, n₂, F, G, f, g);
-sol, is_success = solve_bop(bop; verbosity=0)
+sol, is_success, iter_count = solve_bop(bop; verbosity=0)
 if is_success
     @info "success" sol
 end
