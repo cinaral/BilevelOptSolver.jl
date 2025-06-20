@@ -3,58 +3,60 @@ using BilevelOptSolver
 # Bard1988Ex2
 n₁::Int64 = 4
 n₂::Int64 = 4
-n::Int64 = n₁ + n₂
 
-function F(xx)
-    x = @view xx[1:n₁]
-    y = @view xx[n₁+1:n]
-    -(200 - y[1] - y[3]) * (y[1] + y[3]) - (160 - y[2] - y[4]) * (y[2] + y[4])
+function F(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
+    (x₂[2] + x₂[4]) * (x₂[2] + x₂[4] - 160) + (x₂[1] + x₂[3]) * (x₂[1] + x₂[3] - 200)
 end
 
-function G(xx)
-    x = @view xx[1:n₁]
-    y = @view xx[n₁+1:n]
+function G(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
     [
-        -x[1] - x[2] - x[3] - x[4] + 40
-        10 - x[1]
-        5 - x[2]
-        15 - x[3]
-        20 - x[4]
-        x[1] 
-        x[2]
-        x[3]
-        x[4]
+        40 - x₁[2] - x₁[3] - x₁[4] - x₁[1]
+        10 - x₁[1]
+        5 - x₁[2]
+        15 - x₁[3]
+        20 - x₁[4]
+        x₁[1]
+        x₁[2]
+        x₁[3]
+        x₁[4]
     ]
 end
 
-function f(xx)
-    x = @view xx[1:n₁]
-    y = @view xx[n₁+1:n]
-    (y[1] - 4)^2 + (y[2] - 13)^2 + (y[3] - 35)^2 + (y[4] - 2)^2
+function f(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
+    (x₂[1] - 4)^2 + (x₂[4] - 2)^2 + (x₂[2] - 13)^2 + (x₂[3] - 35)^2
 end
 
-function g(xx)
-    x = @view xx[1:n₁]
-    y = @view xx[n₁+1:n]
+function g(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
     [
-        x[1] - (2 * y[1]) / 5 - (7 * y[2]) / 10
-        x[2] - (3 * y[1]) / 5 - (3 * y[2]) / 10
-        x[3] - (2 * y[3]) / 5 - (7 * y[4]) / 10
-        x[4] - (3 * y[3]) / 5 - (3 * y[4]) / 10
-        20 - y[1]
-        20 - y[2]
-        40 - y[3]
-        40 - y[4]
-        y[1]
-        y[2]
-        y[3]
-        y[4]
+        x₁[1] - (2 * x₂[1]) / 5 - (7 * x₂[2]) / 10; x₁[2] - (3 * x₂[1]) / 5 - (3 * x₂[2]) / 10;
+        x₁[3] - (2 * x₂[3]) / 5 - (7 * x₂[4]) / 10; x₁[4] - (3 * x₂[3]) / 5 - (3 * x₂[4]) / 10;
+        20 - x₂[1]
+        20 - x₂[2]
+        40 - x₂[3]
+        40 - x₂[4]
+        x₂[1]
+        x₂[2]
+        x₂[3]
+        x₂[4]
     ]
 end
 
 x_init = [5.0; 5; 15; 15; 0; 0; 0; 0]
-bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
-sol, is_success, iter_count = solve_bop(bop; x_init, verbosity=0, max_iter=5000)
+Ff_optimal = [-6600.0; 54]
+
+bop = construct_bop(n₁, n₂, F, G, f, g);
+x, is_success, iter_count = solve_bop(bop; x_init, verbosity=2)
+
 if is_success
-    @info "success" sol
+    Ff = [bop.F(x); bop.f(x)]
+    @info "success x = $x, Ff val = $Ff"
+    @assert isapprox(Ff_optimal, Ff; rtol=1e-4)
 end

@@ -425,9 +425,8 @@ function setup_BOPᵢ_KKT_mcp(n_θ, θ_l₀, θ_u₀, θ_sym, F_sym, Gh_sym, v_s
     setup_mcp_solve_PATH(n_θ, θ_l₀, θ_u₀, F!, J_rows, J_cols, J_vals!)
 end
 
-
 """
-Generate derivative functions (unused)
+Generate derivative functions (currently unused 2025-06-20)
 """
 function generate_derivatives(n₁, n₂, m₁, m₂, x_sym, F_sym, G_sym, f_sym, g_sym)
     nₓ = n₁ + n₂ # length(x)

@@ -3,50 +3,38 @@ using BilevelOptSolver
 n₁::Int64 = 1
 n₂::Int64 = 2
 
-function F(xy)
-    x = @view xy[1:n₁]
-    y = @view xy[n₁+1:n₁+n₂]
-    x[1]
+function F(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
+    x₁[1]
 end
 
-function G(xy)
-    x = @view xy[1:n₁]
-    y = @view xy[n₁+1:n₁+n₂]
-    [
-        x[1] + 1
-        1 - x[1]
-    ]
+function G(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
+    [x₁[1] + 1; 1 - x₁[1]]
 end
 
-function f(xy)
-    x = @view xy[1:n₁]
-    y = @view xy[n₁+1:n₁+n₂]
-    (x[1] - y[1])^2 + (y[2] + 1)^2
+function f(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
+    (x₁[1] - x₂[1])^2 + (x₂[2] + 1)^2
 end
 
-function g(xy)
-    x = @view xy[1:n₁]
-    y = @view xy[n₁+1:n₁+n₂]
-    [
-        y[2] - y[1]^3
-        y[2]
-    ]
+function g(x)
+    x₁ = @view x[1:n₁]
+    x₂ = @view x[n₁+1:n₁+n₂]
+    [x₂[2] - x₂[1]^3; x₂[2]]
 end
 
-xy_init = [1.0; 1; 1]
-Ff_optimal = [-1.0; 1; 1]
-xy_optimal = [-1.0, -1, 0]
+x_init = [1.0; 1; 1]
+Ff_optimal = [-1.0; 1]
 
-bop = construct_bop(n₁, n₂, F, G, f, g; verbosity=0);
-sol, is_success, iter_count = solve_bop(bop; x_init=xy_init, verbosity=0)
+bop = construct_bop(n₁, n₂, F, G, f, g);
+x, is_success, iter_count = solve_bop(bop; x_init, verbosity=2)
+
 if is_success
-    @info "success" sol
+    Ff = [bop.F(x); bop.f(x)]
+    @info "success x = $x, Ff val = $Ff" 
+    #@assert isapprox(Ff_optimal, Ff; rtol=1e-4) # currently not optimal 2025-06-20
 end
-
-# does not work
-#OP1 = forrest_solver.OptimizationProblem(3, 1:1, F, G, zeros(2), fill(Inf, 2))
-#OP2 = forrest_solver.OptimizationProblem(3, 1:2, f, g, zeros(2), fill(Inf, 2))
-#bilevel = [OP1; OP2]
-#out = forrest_solver.solve(bilevel, [xy_init; zeros(26)])
-#sol_forrest = out[1:n]
-#@info (sol_forrest)
