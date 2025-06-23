@@ -8,6 +8,7 @@ struct BilevelOptProb
     f::Function # f(x)
     g::Function # g(x)
     solve_follower_nlp::Function
+    solve_follower_KKT_mcp::Function
     find_bilevel_feas_pt::Function
     nᵥ::Int  # length(v) = n₁ + n₂ + m₂ + m₂ 
     mₕ::Int  # length(h) = n₂ + m₂ + m₂ 
@@ -25,6 +26,8 @@ struct BilevelOptProb
     θ_l₀::Vector{Float64} # default θ bounds
     θ_u₀::Vector{Float64}
     solve_BOPᵢ_KKT_mcp::Function
+    deriv_funs
+    sym_derivs
 end
 
 """
@@ -139,7 +142,6 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     G_sym = G(x_sym)
     f_sym = f(x_sym)
     g_sym = g(x_sym)
-    #(deriv_funs, sym_derivs) = generate_derivatives(n₁, n₂, m₁, m₂, x_sym, F_sym, G_sym, f_sym, g_sym) # this could be useful one day
 
     ∇ₓ₂f = Symbolics.gradient(f_sym, x₂_sym)
     ∇ₓ₂g = Symbolics.sparsejacobian(g_sym, x₂_sym)
@@ -168,8 +170,7 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     g_l = fill(0.0, m₂)
     g_u = fill(Inf, m₂)
     solve_follower_nlp = setup_follower_nlp(n₁, n₂, m₂, x₂_l, x₂_u, g_l, g_u, x_sym, λ_sym, x₂_sym, f_sym, g_sym)
-    # TODO:
-    # setup_follower_KKT_mcp()
+    solve_follower_KKT_mcp = setup_follower_KKT_mcp(n₁, n₂, m₂, x_sym, x₂_sym, λ_sym, s_sym, f_sym, g_sym)
 
     find_bilevel_feas_pt = setup_find_bile_feas_pt(n₁, n₂, m₁, m₂, x_sym, G_sym, g_sym)
 
@@ -216,6 +217,9 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     θ_u₀[θ_inds["z"]] .= z_u₀
     solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(n_θ, θ_l₀, θ_u₀, θ_sym, F_sym, Gh_sym, v_sym, Λ_sym, r_sym)
 
+    # TODO: used only for verification, this should be optional to save construction time in the future
+    (deriv_funs, sym_derivs) = generate_derivatives(n₁, n₂, m₁, m₂, x_sym, F_sym, G_sym, f_sym, g_sym) 
+
     BilevelOptProb(
         n₁,
         n₂,
@@ -226,6 +230,7 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
         f,
         g,
         solve_follower_nlp,
+        solve_follower_KKT_mcp,
         find_bilevel_feas_pt,
         nᵥ,
         mₕ,
@@ -242,7 +247,9 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
         θ_inds,
         θ_l₀,
         θ_u₀,
-        solve_BOPᵢ_KKT_mcp
+        solve_BOPᵢ_KKT_mcp,
+        deriv_funs,
+        sym_derivs
     )
 end
 
@@ -301,6 +308,57 @@ function setup_follower_nlp(n₁, n₂, m₂, x₂_l, x₂_u, g_l, g_u, x_sym, �
 
         solve = setup_nlp_solve_IPOPT(n₂, m₂, x₂_l, x₂_u, g_l, g_u, eval_f, eval_g, eval_∇ₓ₂f, ∇ₓ₂g_rows, ∇ₓ₂g_cols, eval_∇ₓ₂g_vals, ∇²ₓ₂L_rows, ∇²ₓ₂L_cols, eval_∇²ₓ₂L_vals)
         solve(; x_init=x₂_init, tol, max_iter, print_level, is_using_HSL)
+    end
+end
+
+
+function setup_follower_KKT_mcp(n₁, n₂, m₂, x_sym, x₂_sym, λ_sym, s_sym, f_sym, g_sym)
+    θ_sym = [x₂_sym; λ_sym; s_sym]
+    n_θ = length(θ_sym)
+    θ_inds = Dict([ # defined for convenience
+        ("x₂" => 1:n₂),
+        ("λ" => n₂+1:n₂+m₂),
+        ("s" => n₂+m₂+1:n₂+2*m₂)
+    ])
+    θ_l = fill(-Inf, n_θ)
+    θ_l[θ_inds["λ"]] .= 0.0
+    θ_l[θ_inds["s"]] .= 0.0
+    θ_u = fill(Inf, n_θ)
+
+    g_w_slack = g_sym .- s_sym
+
+    if isempty(λ_sym)
+        L = f_sym
+    else
+        L = f_sym + g_w_slack' * λ_sym
+    end
+  
+    ∇ₓ₂L_sym = Symbolics.gradient(L, x₂_sym)
+    F_sym = [∇ₓ₂L_sym; g_w_slack; λ_sym]
+
+    θ_w_x₁ = [x_sym; λ_sym; s_sym] # 
+    F! = Symbolics.build_function(F_sym, θ_w_x₁; expression=Val(false))[2]
+    J = Symbolics.sparsejacobian(F_sym, θ_sym)
+
+    (J_rows, J_cols, J_vals) = SparseArrays.findnz(J)
+    J_vals! = Symbolics.build_function(J_vals, θ_w_x₁; expression=Val{false})[2]
+
+    function solve_follower_KKT_mcp(x₁; θ_init=zeros(n_θ), tol=1e-6, max_iter=1000, is_silent=true)
+        θ_w_x₁ = zeros(length(θ_w_x₁))
+        θ_w_x₁[1:n₁] .= x₁
+
+        function eval_F!(F, θ::Vector{Float64})
+            θ_w_x₁[n₁+1:end] .= θ
+            F!(F, θ_w_x₁)
+        end
+
+        function eval_J_vals!(J_vals, θ::Vector{Float64})
+            θ_w_x₁[n₁+1:end] .= θ
+            J_vals!(J_vals, θ_w_x₁)
+        end
+
+        solve = setup_mcp_solve_PATH(n_θ, θ_l, θ_u, F!, J_rows, J_cols, J_vals!)
+        solve(; x_init=θ_init, tol, max_iter, is_silent)
     end
 end
 
@@ -408,6 +466,7 @@ function setup_check_Λ_lp_feas(nᵥ, m₁, mₕ, Gh!, ∇ᵥF!, ∇ᵥGh_rows, 
         check_feas(Λ_all_l, Λ_all_u, A_l, A_u, A)
     end
 end
+
 
 function setup_BOPᵢ_KKT_mcp(n_θ, θ_l₀, θ_u₀, θ_sym, F_sym, Gh_sym, v_sym, Λ_sym, r_sym)
     Gh_w_slack = Gh_sym .- r_sym

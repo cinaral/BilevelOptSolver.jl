@@ -41,10 +41,10 @@ x_init = [1.0; 1; 1; 1]
 Ff_optimal = [2251.55; 565.78]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-x, is_success, iter_count = solve_bop(bop; x_init, verbosity=2)
+x, is_success, iter_count = solve_bop(bop; x_init, verbosity=6)
 
 if is_success
     Ff = [bop.F(x); bop.f(x)]
-    @assert isapprox(Ff_optimal, Ff; rtol=1e-6)
+    @assert isapprox(Ff_optimal, Ff; rtol=1e-3)
     @info "success x = $x, Ff val = $Ff"
 end

@@ -1,4 +1,17 @@
 """
+0. Create BilevelOptProb (symbolics in setup_bop)
+1. Initialize valid v = [x₁, x₂, λ, s] i.e. solves the follower's problem (initialize_z!())
+2. while True:
+    2.1. Find all i such that x ∈ Hᵢ (find_feas_index_sets())
+    2.2. Construct Hᵢ sets to get BOPᵢ
+    2.3. Check if x, λ can solve BOPᵢ for all i: x ∈ Hᵢ (setup_Λ_feas_solver()):
+        If True:
+            2.3.1. (Optional*) Check if x, λ is a minimum
+            2.3.2. Success
+        Otherwise: Solve for x and λ for the violating i (setup_leader_nlp()), go to 2.1.
+
+*After we find a feasible Λ, we could check if (x, λ, Λ) is indeed a minimum of (BOPᵢ) by writing the sufficient conditions or using an NLP solver again.
+
 ```
 Verbosity:
     0: off
@@ -10,17 +23,21 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-3, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=true)
+function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false)
     #x_init::Vector{Float64}=zeros(bop.n₁ + bop.n₂); tol::Float64=1e-3; max_iter::Int64=200; verbosity::Int64=0; n_J_max::Int64=20; is_using_PATH::Bool=false; is_using_HSL::Bool=true
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
-        print("HSL_PATH not found: Setting is_using_HSL = false!\nIf you would like to use HSL, please obtain a license and download HSL_jll.jl (https://licences.stfc.ac.uk/products/Software/HSL/LibHSL), and set HSL_PATH environment variable to the extracted location.\n")
+        if verbosity > 0
+            print("HSL_PATH not found: Setting is_using_HSL = false! If you would like to use HSL, please obtain a license and download HSL_jll.jl (https://licences.stfc.ac.uk/products/Software/HSL/LibHSL), and set HSL_PATH environment variable to the extracted location.\n")
+        end
     end
 
-    if is_using_PATH && bop.n_θ > 300 &&!haskey(ENV, "PATH_LICENSE_STRING")
+    if is_using_PATH && bop.n_θ > 300 && !haskey(ENV, "PATH_LICENSE_STRING")
         is_using_PATH = false
-        print("PATH_LICENSE_STRING not found and problem size is too large: Setting is_using_PATH = false!\nIf you would like to use the PATH Solver for this problem, please obtain a license (https://pages.cs.wisc.edu/~ferris/path/julia/LICENSE), and set PATH_LICENSE_STRING environment variable.\n")
+        if verbosity > 0
+            print("PATH_LICENSE_STRING not found and problem size is too large: Setting is_using_PATH = false! If you would like to use the PATH Solver for this problem, please obtain a license (https://pages.cs.wisc.edu/~ferris/path/julia/LICENSE), and set PATH_LICENSE_STRING environment variable.\n")
+        end
     end
 
     nₓ = bop.n₁ + bop.n₂
@@ -56,6 +73,10 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-3, max_iter=20
 
     #θ_init = zeros(bop.n_θ)
 
+    #function terminate()
+    #    break
+    #end
+
     while !is_converged
         iter_count += 1
 
@@ -71,7 +92,7 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-3, max_iter=20
         end
 
         if !is_BOPᵢ_solved
-            init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity)
+            init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH)
 
             if !init_z_success
                 if verbosity > 0
@@ -90,6 +111,8 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-3, max_iter=20
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v)
         if length(follow_feas_Js) < 1
             if verbosity > 0
+                # this should never happen, somehow follower KKT isn't satisfied:
+                @info "is follower KKT satisfied? $(is_follower_KKT_satisfied(bop, v))"
                 print("Invalid v: Could not compute follower feasible sets!\n")
             end
         end
@@ -284,15 +307,39 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-3, max_iter=20
     (; x, is_success, iter_count)
 end
 
-function initialize_z!(v, bop; is_using_HSL=false, verbosity=0)
+function is_follower_KKT_satisfied(bop, v; tol=1e-6)
+    x = @view v[bop.v_inds["x"]]
+    λ = @view v[bop.v_inds["λ"]]
+
+    ∇ₓf = zeros(bop.n₁ + bop.n₂)
+    bop.deriv_funs.∇ₓf!(∇ₓf, x)
+    ∇ₓg_vals = zeros(length(bop.deriv_funs.∇ₓg_rows))
+    bop.deriv_funs.∇ₓg_vals!(∇ₓg_vals, x)
+    ∇ₓg = sparse(bop.deriv_funs.∇ₓg_rows, bop.deriv_funs.∇ₓg_cols, ∇ₓg_vals)
+    x₂_inds = bop.n₁+1:bop.n₁+bop.n₂
+    is_stationary = all(isapprox.(∇ₓf[x₂_inds] - ∇ₓg[:, x₂_inds]' * λ, 0; atol=2 * tol))
+    is_primal_feas = all(bop.g(x) .≥ 0 - tol) # primal feas
+    is_dual_feas = all(λ .≥ 0 - tol) # dual feas
+    is_complement = all(isapprox.(λ .* bop.g(x), 0; atol=2 * tol)) # complementarity
+
+    return is_stationary && is_primal_feas && is_dual_feas && is_complement
+end
+
+
+function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=false)
     # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
     x₁ = @view v[bop.v_inds["x₁"]]
     x₂ = @view v[bop.v_inds["x₂"]]
     λ = zeros(bop.m₂)
-    s = zeros(bop.m₂)
 
-    x₂, λ, solvestat, _ = bop.solve_follower_nlp(x₁; x₂_init=x₂, is_using_HSL)
-    init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+    if is_using_PATH
+        θ_out, status, _ = bop.solve_follower_KKT_mcp(x₁)
+        x₂ = θ_out[1:bop.n₂]
+        init_z_success = status == PATHSolver.MCP_Solved
+    else
+        x₂, λ, solvestat, _ = bop.solve_follower_nlp(x₁; x₂_init=x₂, is_using_HSL)
+        init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+    end
 
     # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
     if !init_z_success
@@ -304,11 +351,17 @@ function initialize_z!(v, bop; is_using_HSL=false, verbosity=0)
         bilevel_feas_success = solvestat == 0 || solvestat == 1
 
         if bilevel_feas_success
-            x₁ = x_feas[bop.v_inds["x₁"]]
-            x₂ = x_feas[bop.v_inds["x₂"]]
-            x₂, λ, solvestat, _ = bop.solve_follower_nlp(x_feas[1:bop.n₁]; x₂_init=x₂)
+            x₁ .= x_feas[bop.v_inds["x₁"]]
+            x₂ .= x_feas[bop.v_inds["x₂"]]
 
-            init_z_success = solvestat == 0 || solvestat == 1
+            if is_using_PATH
+                θ_out, status, _ = bop.solve_follower_KKT_mcp(x₁)
+                x₂ = θ_out[1:bop.n₂]
+                init_z_success = status == PATHSolver.MCP_Solved
+            else
+                x₂, λ, solvestat, _ = bop.solve_follower_nlp(x₁; x₂_init=x₂, is_using_HSL)
+                init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+            end
         else
             if verbosity > 0
                 print("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
@@ -317,8 +370,10 @@ function initialize_z!(v, bop; is_using_HSL=false, verbosity=0)
     end
 
     if init_z_success
-        s = bop.g([x₁; x₂])
-        v[bop.v_inds["z"]] .= [x₂; λ; s]
+        v[bop.v_inds["x₁"]] .= x₁
+        v[bop.v_inds["x₂"]] .= x₂
+        v[bop.v_inds["λ"]] .= λ
+        v[bop.v_inds["s"]] .= bop.g([x₁; x₂])
     end
 
     return init_z_success
