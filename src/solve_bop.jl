@@ -201,7 +201,7 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
         if !all(is_BOPᵢ_solved_arr[1:n_J])
             if !any(is_BOPᵢ_solved_arr[1:n_J])
                 # oh no, we have no valid v, maybe try again?
-                if verbosity > 0
+                if verbosity > 1
                     is_sol_valid = false
                     print("None BOPᵢ could be solved (out of $(n_J)). v is not valid!\n")
                 end

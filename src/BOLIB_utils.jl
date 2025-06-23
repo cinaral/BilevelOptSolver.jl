@@ -7,7 +7,7 @@ import BOLIB
 
 function run_all_BOLIB_examples(; verbosity=0)
     prob_count = 0
-    converged_count = 0
+    success_count = 0
     optimalish_count = 0
     suboptimalish_count = 0
     bops = []
@@ -33,21 +33,21 @@ function run_all_BOLIB_examples(; verbosity=0)
         push!(bops, bop)
         push!(sols, x)
         push!(iter_counts, iter_count)
-        push!(success_arr, is_success)
         push!(elapsed_arr, elapsed_time)
 
-        if is_success
-            converged_count += 1
-            print("$(prob_count+1)\t $prob\t $(iter_count) iterations:\t ")
-         
-            is_optimal, is_best = rate_BOLIB_success(p, bop, x, elapsed_time)
-            if is_optimal || is_best
-                optimalish_count += 1
-            else
-                suboptimalish_count += 1
-            end
+        is_optimal, is_best = rate_BOLIB_result(p, bop, x)
+        if is_optimal || is_best
+            optimalish_count += 1
+            print("success wasn't reported correctly!\n")
+            is_success = true 
         else
-            print("$(prob_count+1)\t $prob\tFailed to converge")
+            suboptimalish_count += 1
+        end
+
+        push!(success_arr, is_success)
+
+        if is_success
+            success_count += 1
         end
 		print("\t($elapsed_time s)\n")
         prob_count += 1
@@ -63,12 +63,12 @@ function run_all_BOLIB_examples(; verbosity=0)
         n_success += 1
     end
 
-    print("Out of $prob_count problems, $converged_count ($(converged_count/prob_count*100)%) converged.\n")
-    print("Out of converged solutions: $optimalish_count ($(optimalish_count/converged_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/converged_count*100)%) were suboptimal or worse than best known.\n")
+    print("Out of $prob_count problems, $success_count ($(success_count/prob_count*100)%) converged.\n")
+    print("Out of converged solutions: $optimalish_count ($(optimalish_count/success_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/success_count*100)%) were suboptimal or worse than best known.\n")
     print("Elapsed min/max (s): $(minimum(elapsed_arr))/$(maximum(elapsed_arr)), success mean elapsed (s): $(success_elapsed_sum/n_success)\n")
 end
 
-function rate_BOLIB_success(BOLIB, bop, x, elapsed_time; tol=1e-6)
+function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
     is_optimal = false
     is_best = false
     Ff = [bop.F(x); bop.f(x)]

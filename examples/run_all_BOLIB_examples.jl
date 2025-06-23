@@ -2,4 +2,4 @@
 using BilevelOptSolver
 include("../src/BOLIB_utils.jl")
 
-run_all_BOLIB_examples()
+run_all_BOLIB_examples(;verbosity=1)

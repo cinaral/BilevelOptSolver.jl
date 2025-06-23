@@ -2,23 +2,24 @@
 using BilevelOptSolver
 include("../src/BOLIB_utils.jl")
 
-if !haskey(ENV, "BOLIB_PATH")
-    error("You need to obtain [BOLIB.jl](https://github.com/cinaral/BOLIB.jl) and set BOLIB_PATH environment variable to run this example.\n")
-end
-Pkg.develop(path=ENV["BOLIB_PATH"])
-import BOLIB
+# Change this to any BOLIB examples: e.g. AllendeStill2013, AnEtal2009, Bard1988Ex2, LamparielloSagratella2017Ex23, Zlobec2001b, AiyoshiShimizu1984Ex2, NieEtal2017Ex52
+b = BOLIB.NieEtal2017Ex52()
 
-p = BOLIB.Zlobec2001b()
-
-bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
+bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 elapsed_time = @elapsed begin
-    x, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity=1, is_using_PATH=false)
+    x, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=b.xy_init, verbosity=1, is_using_PATH=false)
 end
 
-if is_success
-    print("success x = $x in $elapsed_time s, Ff = $([bop.F(x); bop.f(x)])\n")
-    rate_BOLIB_success(p, bop, x, elapsed_time)
-else
-    print("fail")
-end
+print("success = $is_success, x = $x in $elapsed_time s, Ff = $([bop.F(x); bop.f(x)])\t")
+rate_BOLIB_result(b, bop, x)
+
+#include("../src/forrest_solver.jl")
+#using .forrest_solver
+#OP1 = forrest_solver.OptimizationProblem(p.n1+ p.n2, 1:p.n1, p.F, p.G, zeros(bop.m₁), fill(Inf, bop.m₁))
+#OP2 = forrest_solver.OptimizationProblem(p.n1+ p.n2, 1:p.n2, p.f, p.g, zeros(bop.m₂), fill(Inf, bop.m₂))
+#bilevel = [OP1; OP2]
+#out = forrest_solver.solve(bilevel)
+#out = @btime forrest_solver.solve(bilevel, [global_opt_sol; zeros(64)])
+#x_forrest = out[1:p.n1+ p.n2]
+#@info x_forrest
