@@ -36,12 +36,12 @@ function run_all_BOLIB_examples(; verbosity=0)
         push!(elapsed_arr, elapsed_time)
 
         if prob_count % 20 == 0
-            print("id name iterations: elapsed: rating, x, Ff (Ff*), result\n")
+            print("id name iterations: elapsed: rating, x -> Ff (Ff*), result\n")
         end
         print("$(prob_count+1)\t $prob\t $(iter_count):\t ")
 
         is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(p, bop, x)
-        print("$(round(elapsed_time, sigdigits=5)) s,\t" * rating * ",\t$(round.(x, sigdigits=5)), $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
+        print("$(round(elapsed_time, sigdigits=5)) s,\t" * rating * ",\t$(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
 
         if is_optimal || is_best
             optimalish_count += 1
