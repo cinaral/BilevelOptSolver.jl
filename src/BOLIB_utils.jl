@@ -35,23 +35,35 @@ function run_all_BOLIB_examples(; verbosity=0)
         push!(iter_counts, iter_count)
         push!(elapsed_arr, elapsed_time)
 
-        is_optimal, is_best = rate_BOLIB_result(p, bop, x)
+        if prob_count % 20 == 0
+            print("id name iterations: elapsed: rating, x, Ff (Ff*), result\n")
+        end
+        print("$(prob_count+1)\t $prob\t $(iter_count):\t ")
+
+        is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(p, bop, x)
+        print("$(round(elapsed_time, sigdigits=5)) s,\t" * rating * ",\t$(round.(x, sigdigits=5)), $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
+
         if is_optimal || is_best
             optimalish_count += 1
-            print("success wasn't reported correctly!\n")
-            is_success = true 
+            if !is_success
+                print("Success but didn't converge!\t")
+                is_success = true
+            end
         else
-            suboptimalish_count += 1
+            if is_success # otherwise doesn't matter
+                suboptimalish_count += 1
+            end
+        end
+
+        if is_success
+            print("SUCCESS\n")
+            success_count += 1
+        else
+            print("FAIL\n")
         end
 
         push!(success_arr, is_success)
-
-        if is_success
-            success_count += 1
-        end
-		print("\t($elapsed_time s)\n")
         prob_count += 1
-        #end
     end
 
     success_elapsed_sum = 0
@@ -73,27 +85,44 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
     is_best = false
     Ff = [bop.F(x); bop.f(x)]
     Ff_star = BOLIB.Ff_optimal[1:2]
+    rating = ""
 
     if BOLIB.Ff_optimal[3] == 1 # star means optimal
         if isapprox(Ff, Ff_star; atol=2 * tol)
             is_optimal = true
-            print("optimal")
+            rating = "optimal"
+        elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
+            is_optimal = true
+            if Ff[2] < Ff_star[2] - tol
+                rating = "optimal F and f is somehow BETTER"
+            else
+                rating = "optimal F but f is worse"
+            end
+        elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
+            is_optimal = true
+            rating = "better than optimal?!"
         else
-            print("SUBOPTIMAL:  Ff = $Ff \tFf*: $Ff_star")
+            rating = "SUBOPTIMAL"
         end
     elseif BOLIB.Ff_optimal[3] == 2 # star means best
         if isapprox(Ff, Ff_star; atol=2 * tol)
             is_best = true
-            print("same as best known")
+            rating = "best known"
+        elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
+            is_best = true
+            if Ff[2] < Ff_star[2] - tol
+                rating = "best known F and f is somehow BETTER"
+            else
+                rating = "best known F but f is worse"
+            end
         elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
             is_best = true
-            print("better than best known: Ff = $Ff \tFf* = $Ff_star")
+            rating = "better than best known"
         else
-            print("WORSE than best known: Ff = $Ff \tFf*: $Ff_star")
+            rating = "WORSE than best known"
         end
     else
-        print("no reference solution")
+        rating = "no reference solution"
     end
-
-    (; is_optimal, is_best)
+    is_optimal, is_best, Ff, Ff_star, rating
 end
