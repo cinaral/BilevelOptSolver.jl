@@ -15,7 +15,7 @@ function run_all_BOLIB_examples(; verbosity=0)
     success_arr = Bool[]
     iter_counts = Int64[]
     elapsed_arr = Float64[]
-
+    is_success = false
     for prob in BOLIB.examples
         if "SinhaMaloDeb2014TP9" == prob || "SinhaMaloDeb2014TP10" == prob
             # these fail to compile for some reason so we skip
@@ -28,7 +28,7 @@ function run_all_BOLIB_examples(; verbosity=0)
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=false)
         #solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
         elapsed_time = @elapsed begin
-            x, is_success, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity, is_using_PATH=false)
+            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity, is_using_PATH=false)
         end
         push!(bops, bop)
         push!(sols, x)
@@ -43,10 +43,12 @@ function run_all_BOLIB_examples(; verbosity=0)
         is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(p, bop, x)
         print("$(round(elapsed_time, sigdigits=5)) s,\t" * rating * ",\t$(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
 
+        is_success = is_converged && is_sol_valid
+
         if is_optimal || is_best
             optimalish_count += 1
-            if !is_success
-                print("Success but didn't converge!\t")
+            if !is_converged && is_sol_valid
+                print("didn't converge but valid\t")
                 is_success = true
             end
         else

@@ -41,11 +41,8 @@ x_init =  [0; 0; 1.1097; 0.3143; −0.8184] # causes a bug
 Ff_optimal = [−1; −1; 1.1097; 0.3143; −0.8184]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-x, is_success, iter_count = solve_bop(bop; x_init, verbosity=2)
+x, is_converged, is_sol_valid, iter_count = solve_bop(bop; x_init, verbosity=2)
 
-if is_success
-    Ff = [bop.F(x); bop.f(x)]
-    @info "success x = $x, Ff val = $Ff"
-    #@assert isapprox(Ff_optimal, Ff; rtol=1e-4) # currently not optimal 2025-06-20
-end
+Ff = [bop.F(x); bop.f(x)]
+print("converged = $is_converged, valid = $is_sol_valid, \tx = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5))\n");
 

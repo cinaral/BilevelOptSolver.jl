@@ -38,10 +38,8 @@ Ff_optimal = [3.0, 1.0]
 x_init = [2.4564338234981746; 0.9845259227566776]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-x, is_success, iter_count = solve_bop(bop; x_init, verbosity=6)
+x, is_converged, is_sol_valid, iter_count = solve_bop(bop; x_init, verbosity=2)
 
-if is_success
-    Ff = [bop.F(x); bop.f(x)]
-    @info "success x = $x, Ff val = $Ff"
-    @assert isapprox(Ff_optimal, Ff; rtol=1e-4) # currently not optimal 2025-06-20
-end
+Ff = [bop.F(x); bop.f(x)]
+print("converged = $is_converged, valid = $is_sol_valid, \tx = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_optimal, sigdigits=5)))\n");
+

@@ -87,7 +87,9 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
 
         x = ipopt_prob.x
         λ = -ipopt_prob.mult_g # convention change!!
-        (; x, λ, solvestat, ipopt_prob)
+        λ_x_l = -ipopt_prob.mult_x_L
+        λ_x_u = -ipopt_prob.mult_x_U
+        (; x, λ, λ_x_l, λ_x_u, solvestat, ipopt_prob)
     end
     solve_nlp
 end

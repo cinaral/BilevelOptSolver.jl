@@ -8,16 +8,16 @@ Notes 2025-06-23:
 AiyoshiShimizu1984Ex2 has Ff* = [5.0, 0.0] but this is wrong?
 
 """
-b = BOLIB.AllendeStill2013()
+b = BOLIB.AnEtal2009()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 elapsed_time = @elapsed begin
-    x, is_success, iter_count = solve_bop(bop; max_iter=10, x_init=b.xy_init, verbosity=5, is_using_PATH=false)
+    x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=b.xy_init, verbosity=2, is_using_PATH=false)
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
-print("success = $is_success, elapsed: $(round(elapsed_time, sigdigits=5)) s,\t" * rating * "\tx = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_star, sigdigits=5)))\n");
+print("converged = $is_converged, valid = $is_sol_valid, elapsed: $(round(elapsed_time, sigdigits=5)) s,\t" * rating * "\tx = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_star, sigdigits=5)))\n");
 
 #include("../src/forrest_solver.jl")
 #using .forrest_solver
