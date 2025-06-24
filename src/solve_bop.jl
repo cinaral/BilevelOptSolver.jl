@@ -46,14 +46,12 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
     is_converged = false
     is_sol_valid = false
     is_v_valid = false
-    is_success = false
-    rolling_v_idx = 1
 
     x::Vector{Float64} = zeros(nₓ)
     #λ = zeros(bop.m₂)
     #s = zeros(bop.m₂)
     v = zeros(bop.nᵥ)
-    Λ_all = zeros(bop.m₁ + bop.mₕ + 2 * bop.nᵥ)
+    Λ = zeros(bop.m₁ + bop.mₕ)
 
     v[bop.v_inds["x"]] .= x_init[1:nₓ]
     v_l = copy(bop.v_l₀)
@@ -176,7 +174,7 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
                     Ji = follow_feas_Js[i]
                     Ji_bounds = convert_J_to_bounds(Ji, bop)
 
-                    is_v_valid = update_v!(v, Λ_all, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
+                    is_v_valid = update_v!(v, Λ, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
 
                     if is_v_valid
                         if verbosity > 2
@@ -202,11 +200,16 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
 
-            if i == 1 # need to compute Λ_all once
-                is_v_valid = update_v!(v, Λ_all, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
+            if i == 1 # need to compute Λ once
+                is_v_valid = update_v!(v, Λ, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
             end
 
-            is_valid = check_v_Λ_on_BOPᵢ!(v, Λ_all, bop, Ji_bounds; verbosity=verbosity)
+            v_l[bop.v_inds["z"]] .= Ji_bounds.z_l
+            v_u[bop.v_inds["z"]] .= Ji_bounds.z_u
+            Gh_l[bop.Gh_inds["h"]] .= Ji_bounds.h_l
+            Gh_u[bop.Gh_inds["h"]] .= Ji_bounds.h_u
+    
+            is_valid = check_v_Λ_on_BOPᵢ!(v, Λ, bop, Gh_l, Gh_u, v_l, v_u, θ_l[bop.θ_inds["Λ"]], θ_u[bop.θ_inds["Λ"]]; verbosity=verbosity)
 
             if !is_valid
                 is_sol_valid = false
@@ -301,17 +304,17 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
     (; x, is_converged, is_sol_valid, iter_count)
 end
 
-function check_v_Λ_on_BOPᵢ!(v, Λ_all, bop, Ji_bounds; verbosity=0, tol=1e-6)
+function check_v_Λ_on_BOPᵢ!(v, Λ, bop, Gh_l, Gh_u, v_l, v_u, Λ_l, Λ_u; verbosity=0, tol=1e-6)
     ∇ᵥGh_rows, ∇ᵥGh_cols, ∇ᵥGh_shape, ∇ᵥ²L_rows, ∇ᵥ²L_cols, ∇ᵥ²L_shape = bop.info_BOPᵢ()
     Gh = zeros(bop.m₁ + bop.mₕ)
     ∇ᵥF = zeros(bop.nᵥ)
     ∇ᵥGh = sparse(∇ᵥGh_rows, ∇ᵥGh_cols, zeros(length(∇ᵥGh_rows)), ∇ᵥGh_shape[1], ∇ᵥGh_shape[2])
     ∇ᵥ²L = sparse(∇ᵥ²L_rows, ∇ᵥ²L_cols, zeros(length(∇ᵥ²L_rows)), ∇ᵥ²L_shape[1], ∇ᵥ²L_shape[2])
-    bop.eval_BOPᵢ!(Gh, ∇ᵥF, ∇ᵥGh.nzval, ∇ᵥ²L.nzval, v, Λ_all[1:bop.m₁+bop.mₕ])
+    bop.eval_BOPᵢ!(Gh, ∇ᵥF, ∇ᵥGh.nzval, ∇ᵥ²L.nzval, v, Λ)
     ∇ᵥGhb = [∇ᵥGh; -LinearAlgebra.I(bop.nᵥ); LinearAlgebra.I(bop.nᵥ)]
 
-    is_stationary = all(isapprox.(∇ᵥF - ∇ᵥGhb' * Λ_all, 0; atol=2 * tol))
-    is_complement = all(isapprox.(Λ_all[1:bop.m₁+bop.mₕ] .* Gh, 0; atol=2 * tol)) # complementarity
+    is_stationary = true || all(isapprox.(∇ᵥF - ∇ᵥGh' * Λ, 0; atol=2 * tol))
+    is_complement = all(isapprox.(Λ .* Gh, 0; atol=2 * tol)) # complementarity
 
     # primal and dual feasibility
     # debug
@@ -326,14 +329,14 @@ function check_v_Λ_on_BOPᵢ!(v, Λ_all, bop, Ji_bounds; verbosity=0, tol=1e-6)
     #θ_init = zeros(bop.n_θ)
     #update_v!(v_temp, Λ_all_temp, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init)
 
-    #is_primal_feas = all(Gh .≥ Gh_l .- tol) && all(Gh .≤ Gh_u .+ tol) && all(v .≥ v_l .- tol) && all(v.≤ v_u .+ tol)
+    is_primal_feas = all(Gh .≥ Gh_l .- tol) && all(Gh .≤ Gh_u .+ tol) && all(v .≥ v_l .- tol) && all(v.≤ v_u .+ tol)
 
-    check_feas, Λ_all_l, Λ_all_u, A_l, A_u, A = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
+    #check_feas, Λ_all_l, Λ_all_u, A_l, A_u, A = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
 
-    #is_dual_feas = all(Λ_all .≥ Λ_all_l .- tol) && all(Λ_all .≤ Λ_all_u .+ tol)
-    #is_primal_dual_feas = is_primal_feas && is_dual_feas
+    is_dual_feas = all(Λ .≥ Λ_l .- tol) && all(Λ .≤ Λ_u .+ tol)
+    is_primal_dual_feas = is_primal_feas && is_dual_feas
 
-    is_primal_dual_feas = all(A * Λ_all .≥ A_l .- tol) && all(A * Λ_all .≤ A_u .+ tol) && all(Λ_all .≥ Λ_all_l .- tol) && all(Λ_all .≤ Λ_all_u .+ tol)
+    #is_primal_dual_feas = all(A * Λ_all .≥ A_l .- tol) && all(A * Λ_all .≤ A_u .+ tol) && all(Λ_all .≥ Λ_all_l .- tol) && all(Λ_all .≤ Λ_all_u .+ tol)
 
     #if is_primal_dual_feas && is_stationary && !is_primal_dual_feas2
     #    # but this works... so check_Λ_lp_feas is missing some constraints
@@ -345,10 +348,11 @@ function check_v_Λ_on_BOPᵢ!(v, Λ_all, bop, Ji_bounds; verbosity=0, tol=1e-6)
     #end
 
     is_sol_valid = true
-    if !(is_stationary && is_primal_dual_feas && is_complement)
+    if !(is_stationary && is_primal_feas && is_dual_feas && is_complement)
         if verbosity > 1
             print("v does not satisfy BOPᵢ KKT! $is_primal_dual_feas\n")
         end
+        #Main.@infiltrate
         is_sol_valid = false
     end
     is_sol_valid
@@ -425,7 +429,7 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
     return init_z_success
 end
 
-function update_v!(v, Λ_all, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH=false, is_using_HSL=false)
+function update_v!(v, Λ, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH=false, is_using_HSL=false)
     is_BOPᵢ_solved::Bool = false
     if is_using_PATH
         θ_init[bop.θ_inds["v"]] .= v
@@ -436,18 +440,19 @@ function update_v!(v, Λ_all, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, 
         θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init)
         v_out = θ_out[bop.θ_inds["v"]]
         Λ_out = θ_out[bop.θ_inds["Λ"]]
+        #Main.@infiltrate
         is_BOPᵢ_solved = status == PATHSolver.MCP_Solved
     else
         v_l[bop.v_inds["z"]] .= Ji_bounds.z_l
         v_u[bop.v_inds["z"]] .= Ji_bounds.z_u
         Gh_l[bop.Gh_inds["h"]] .= Ji_bounds.h_l
         Gh_u[bop.Gh_inds["h"]] .= Ji_bounds.h_u
-        v_out, Λ_out, Λ_x_l_out, Λ_x_u_out, solvestat = bop.solve_BOPᵢ_nlp(x_l=v_l, x_u=v_u, g_l=Gh_l, g_u=Gh_u, x_init=v, is_using_HSL=is_using_HSL)
+        v_out, Λ_out, _, _, solvestat = bop.solve_BOPᵢ_nlp(x_l=v_l, x_u=v_u, g_l=Gh_l, g_u=Gh_u, x_init=v, is_using_HSL=is_using_HSL)
         is_BOPᵢ_solved = solvestat == 0 || solvestat == 1
     end
 
     v .= v_out # even if it's not solved, we update v so we can try to initialize z again
-    Λ_all .= [Λ_out; Λ_x_l_out; Λ_x_u_out]
+    Λ .= Λ_out
     is_BOPᵢ_solved
 end
 

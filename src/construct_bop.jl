@@ -361,7 +361,7 @@ function setup_follower_KKT_mcp(n₁, n₂, m₂, x_sym, x₂_sym, λ_sym, s_sym
             J_vals!(J_vals, θ_w_x₁)
         end
 
-        solve = setup_mcp_solve_PATH(n_θ, θ_l, θ_u, F!, J_rows, J_cols, J_vals!)
+        solve = setup_mcp_solve_PATH(n_θ, θ_l, θ_u, eval_F!, J_rows, J_cols, eval_J_vals!)
         solve(; x_init=θ_init, tol, max_iter, is_silent)
     end
 end
