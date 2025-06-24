@@ -155,13 +155,13 @@ function construct_bop(n₁, n₂, F, G, f, g; verbosity=0)
     end
     @assert(mₕ == length(h_sym))
 
+    # If there were bounds on x it could be added here
     # hᵢ ⟂ z_lᵢ ≤ z ≤ z_uᵢ
-    # x₁, x₂, λ are free, but 0 ≤ s ≤ s_ubᵢ
+    # x₂, λ are free, but 0 ≤ s ≤ s_ubᵢ
     z_l₀ = fill(-Inf, mₕ) # default z lb
     z_l₀[z_inds["s"]] .= zeros(m₂)
     z_u₀ = fill(Inf, mₕ) # default z ub
-
-    # If there were bounds on leader x₁ it could be added here
+    # x₁ is also free. 
     v_l₀ = fill(-Inf, nᵥ) # default l lb
     v_l₀[v_inds["z"]] .= z_l₀
     v_u₀ = fill(Inf, nᵥ) # default u lb
@@ -442,42 +442,57 @@ end
 ```
 KKT conditions for BOPᵢ is practically an LP feasibility problem when v is given:
     ∃Λ ∈ R⁽ᵐ¹⁺ᵐʰ⁾, ∃Λ_l ∈ R⁽ⁿᵛ⁾, ∃Λ_u ∈ R⁽ⁿᵛ⁾:
-        ∇ᵥF(x) - Λᵀ ∇ᵥGhᵢ(v) - Λ_v_l + Λ_v_u = 0                                            
-                Ghᵢ(v) ≥ 0 ⟂   Λ ≥ 0              (KKT conditions of BOPᵢ NLP)
-              v - v_lᵢ ≥ 0 ⟂ Λ_v_l ≥ 0                
-             -v + v_uᵢ ≥ 0 ⟂ Λ_v_u ≥ 0 
+        ∇ᵥF(x) - Λᵀ ∇ᵥGh(v) - Λ_vl + Λ_vu = 0                                            
+     Gh_uᵢ ≥ Gh(v) ≥ Gh_l₀ ⟂   Λ ≥ 0              (KKT conditions of BOPᵢ NLP)
+              v - v_lᵢ ≥ 0 ⟂ Λ_vl ≥ 0                
+             -v + v_uᵢ ≥ 0 ⟂ Λ_vu ≥ 0 
+
+    ∃Λ ∈ R⁽ᵐ¹⁺ᵐʰ⁾, ∃Λ_l ∈ R⁽ⁿᵛ⁾, ∃Λ_u ∈ R⁽ⁿᵛ⁾:
+        ∇ᵥF(x) - Λᵀ ∇ᵥGh(v) - Λ_vl + Λ_vu = 0                                            
+     Gh_uᵢ ≥ Gh(v) ≥ Gh_l₀ ⟂    Λ ≥ 0              (KKT conditions of BOPᵢ NLP)
+              v - v_lᵢ ≥ 0 ⟂ Λ_vl ≥ 0                
+             -v + v_uᵢ ≥ 0 ⟂ Λ_vu ≥ 0 
 ```
 """
 function setup_check_Λ_lp_feas(nᵥ, m₁, mₕ, Gh!, ∇ᵥF!, ∇ᵥGh_rows, ∇ᵥGh_cols, ∇ᵥGh_vals!, ∇ᵥGh_shape, Gh_inds, v_inds)
-    m = m₁ + mₕ
-    check_feas = setup_lp_feas_check_HiGHS(m + 2 * nᵥ)
+    #m = m₁ + mₕ
+    check_feas = setup_lp_feas_check_HiGHS(m₁ + mₕ + 2 * nᵥ)
 
     function check_Λ_lp_feas(v, z_l, z_u, h_l, h_u)
-        Gh = zeros(m)
+        Gh = zeros(m₁ + mₕ)
         Gh!(Gh, v)
         ∇ᵥF = zeros(nᵥ)
         ∇ᵥF!(∇ᵥF, v)
         ∇ᵥGh = sparse(∇ᵥGh_rows, ∇ᵥGh_cols, zeros(Cdouble, length(∇ᵥGh_rows)), ∇ᵥGh_shape[1], ∇ᵥGh_shape[2])
         ∇ᵥGh_vals!(∇ᵥGh.nzval, v)
-        ∇ᵥGhb = [∇ᵥGh; LinearAlgebra.I(nᵥ); -LinearAlgebra.I(nᵥ)] # appended with v bounds 
+        ∇ᵥGhb = [∇ᵥGh; -LinearAlgebra.I(nᵥ); LinearAlgebra.I(nᵥ)] # appended with v bounds 
 
-        # Λ_all := [Λ; Λ_v_l; Λ_v_u]
+        # Λ_all := [Λ; Λ_vl; Λ_vu]
+        #v_l[bop.v_inds["z"]] .= z_l
+        #v_u[bop.v_inds["z"]] .= z_u
+        #Gh_l[bop.Gh_inds["h"]] .= h_l
+        #Gh_u[bop.Gh_inds["h"]] .= h_u
         # Λ_all_l ≤ Λ_all ≤ Λ_all_u
-        Λ_all_l = [fill(-Inf, m); zeros(2 * nᵥ)]
-        Λ_all_l[Gh_inds["h"]] = z_l
-        Λ_all_u = [fill(Inf, m); fill(Inf, 2 * nᵥ)]
-        Λ_all_u[Gh_inds["h"]] = z_u
+        Λ_all_l = fill(-Inf, m₁ + mₕ + 2 * nᵥ)
+        #Λ_all_l[Gh_inds["h"]] .= h_l # complement of h
+        Λ_all_u = fill(Inf, m₁ + mₕ + 2 * nᵥ)
+        #Λ_all_u[Gh_inds["h"]] .= h_u # complement of h
 
         # Define the row lower bounds and upper bounds A_l = A_u = b
         # A_l ≤ A * Λ_all ≤ A_u
-        A_l = [∇ᵥF; 0]
-        A_l[v_inds["z"]] = h_l
-        A_u = [∇ᵥF; 0]
-        A_u[v_inds["z"]] = h_u
+        A_l = [∇ᵥF; 0] # final 0 for complementarity
+        A_u = [∇ᵥF; 0] # final 0 for complementarity
+        #A_l = [∇ᵥF;] #
+        #A_l[v_inds["z"]] .= h_l # complement of z
+        #A_u = [∇ᵥF;]
+        #A_u[v_inds["z"]] .= h_u # complement of z
 
         # constraint matrix is column-wise:
         G = @view Gh[Gh_inds["G"]]
-        A = vcat(∇ᵥGhb', sparse([G' zeros(mₕ + 2 * nᵥ)'])) # Λ₁ᵀ G = 0 (leader complementarity) added
+        # Λ_all[1:bop.m₁+bop.mₕ] .* Gh
+        #A = vcat(∇ᵥGhb', sparse([Gh' zeros(2 * nᵥ)'])) # Λᵀ Gh = 0 (leader complementarity) added
+        A = vcat(∇ᵥGhb', sparse([G' zeros(mₕ + 2 * nᵥ)']))
+        #A = vcat(∇ᵥGhb')
 
         #check_feas(Λ_all_l, Λ_all_u, A_l, A_u, A)
         (; check_feas, Λ_all_l, Λ_all_u, A_l, A_u, A)

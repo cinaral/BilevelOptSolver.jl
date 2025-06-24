@@ -169,22 +169,22 @@ end
 """
 [HiGHS](https://ergo-code.github.io/HiGHS/dev/) solves:
 ```
-min     cᵀx + d   
+    min     cᵀx + d   
     x
-s.t.    x_l ≤ x ≤ x_u
-        A_l ≤ A x ≤ A_u
+    s.t.    x_l ≤ x ≤ x_u
+            A_l ≤ A x ≤ A_u
 ```
 Because we're only checking for LP feasiblity: c = d = 0.
 
 Here's a HiGHS encoding example because the API is kinda obscure:
 ```
-Min     x₀ +  x₁ + 3
- x
-s.t.    0 ≤ x₀ ≤ 4
-        1 ≤ x₁   
-                  x₁ ≤ 7
-        5 ≤ x₀ + 2x₁ ≤ 15
-        6 ≤ 3x₀ + 2x₁
+    Min     x₀ +  x₁ + 3
+    x
+    s.t.    0 ≤ x₀ ≤ 4
+            1 ≤ x₁   
+                      x₁ ≤ 7
+            5 ≤ x₀ + 2x₁ ≤ 15
+            6 ≤ 3x₀ + 2x₁
 ```
 This would be encoded like this:
 ```
@@ -214,8 +214,8 @@ function setup_lp_feas_check_HiGHS(n; primal_feas_tol=1e-6, zero_tol=1e-3, verbo
         a_index = A.rowval .- 1
         a_value = A.nzval
 
-        n_col = convert(Cint, size(c, 1))
-        n_row = convert(Cint, size(A_l, 1))
+        n_x = convert(Cint, n)
+        n_A_l = convert(Cint, size(A_l, 1))
         n_nz = convert(Cint, size(a_index, 1))
         c = convert(Array{Cdouble}, c)
         x_l = convert(Array{Cdouble}, x_l)
@@ -229,8 +229,8 @@ function setup_lp_feas_check_HiGHS(n; primal_feas_tol=1e-6, zero_tol=1e-3, verbo
 
         status = HiGHS.Highs_passLp(
             model,
-            n_col,
-            n_row,
+            n_x,
+            n_A_l,
             n_nz,
             HiGHS.kHighsMatrixFormatColwise,
             HiGHS.kHighsObjSenseMinimize,

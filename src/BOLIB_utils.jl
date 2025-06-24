@@ -5,11 +5,12 @@ end
 Pkg.develop(path=ENV["BOLIB_PATH"])
 import BOLIB
 
-function run_all_BOLIB_examples(; verbosity=0)
+function run_all_BOLIB_examples(; verbosity=0, is_using_PATH=false, is_using_HSL=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
     suboptimalish_count = 0
+    ps = []
     bops = []
     sols = Vector{Float64}[]
     success_arr = Bool[]
@@ -25,15 +26,11 @@ function run_all_BOLIB_examples(; verbosity=0)
 
         bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
         # dry runs for @time...
-        solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=false)
+        solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH)
         #solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
         elapsed_time = @elapsed begin
-            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity, is_using_PATH=false)
+            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity, is_using_PATH, is_using_HSL)
         end
-        push!(bops, bop)
-        push!(sols, x)
-        push!(iter_counts, iter_count)
-        push!(elapsed_arr, elapsed_time)
 
         if prob_count % 20 == 0
             print("id name iterations: elapsed: rating, x -> Ff (Ff*), result\n")
@@ -46,10 +43,12 @@ function run_all_BOLIB_examples(; verbosity=0)
         is_success = is_converged && is_sol_valid
 
         if is_optimal || is_best
-            optimalish_count += 1
             if !is_converged && is_sol_valid
                 print("didn't converge but valid\t")
                 is_success = true
+            end
+            if is_success
+                optimalish_count += 1
             end
         else
             if is_success # otherwise doesn't matter
@@ -64,22 +63,16 @@ function run_all_BOLIB_examples(; verbosity=0)
             print("FAIL\n")
         end
 
+        push!(ps, p)
+        push!(bops, bop)
+        push!(sols, x)
+        push!(iter_counts, iter_count)
+        push!(elapsed_arr, elapsed_time)
         push!(success_arr, is_success)
         prob_count += 1
     end
 
-    success_elapsed_sum = 0
-    n_success = 0
-    for (i, is_success) in enumerate(success_arr)
-        if is_success
-            success_elapsed_sum += elapsed_arr[i]
-        end
-        n_success += 1
-    end
-
-    print("Out of $prob_count problems, $success_count ($(success_count/prob_count*100)%) converged.\n")
-    print("Out of converged solutions: $optimalish_count ($(optimalish_count/success_count*100)%) were optimal or best known, while $suboptimalish_count ($(suboptimalish_count/success_count*100)%) were suboptimal or worse than best known.\n")
-    print("Elapsed min/max (s): $(minimum(elapsed_arr))/$(maximum(elapsed_arr)), success mean elapsed (s): $(success_elapsed_sum/n_success)\n")
+    (; prob_count, success_count, optimalish_count, suboptimalish_count, ps, bops, sols, iter_counts, elapsed_arr, success_arr)
 end
 
 function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
