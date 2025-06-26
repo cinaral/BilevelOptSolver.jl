@@ -208,7 +208,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
             v_u[bop.v_inds["z"]] .= Ji_bounds.z_u
             Gh_l[bop.Gh_inds["h"]] .= Ji_bounds.h_l
             Gh_u[bop.Gh_inds["h"]] .= Ji_bounds.h_u
-    
+
             is_valid = check_v_Λ_on_BOPᵢ!(v, Λ, bop, Gh_l, Gh_u, v_l, v_u, θ_l[bop.θ_inds["Λ"]], θ_u[bop.θ_inds["Λ"]]; verbosity=verbosity)
 
             if !is_valid
@@ -228,7 +228,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
                 new_v_ind_counter = n_J
                 Ji = follow_feas_Js[new_v_ind_counter]
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
-                is_v_valid = update_v!(v, Λ_all, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
+                is_v_valid = update_v!(v, Λ, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
                 if verbosity > 1
                     print("Solved BOPᵢ at i=$new_v_ind_counter to find a new v\n")
                 end
@@ -329,7 +329,7 @@ function check_v_Λ_on_BOPᵢ!(v, Λ, bop, Gh_l, Gh_u, v_l, v_u, Λ_l, Λ_u; ver
     #θ_init = zeros(bop.n_θ)
     #update_v!(v_temp, Λ_all_temp, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_init)
 
-    is_primal_feas = all(Gh .≥ Gh_l .- tol) && all(Gh .≤ Gh_u .+ tol) && all(v .≥ v_l .- tol) && all(v.≤ v_u .+ tol)
+    is_primal_feas = all(Gh .≥ Gh_l .- tol) && all(Gh .≤ Gh_u .+ tol) && all(v .≥ v_l .- tol) && all(v .≤ v_u .+ tol)
 
     #check_feas, Λ_all_l, Λ_all_u, A_l, A_u, A = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
 
@@ -362,12 +362,12 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     x = @view v[bop.v_inds["x"]]
     λ = @view v[bop.v_inds["λ"]]
 
-    ∇ₓf = zeros(bop.n₁ + bop.n₂)
+    ∇ₓf = zeros(bop.n1 + bop.n2)
     bop.deriv_funs.∇ₓf!(∇ₓf, x)
     ∇ₓg_vals = zeros(length(bop.deriv_funs.∇ₓg_rows))
     bop.deriv_funs.∇ₓg_vals!(∇ₓg_vals, x)
     ∇ₓg = sparse(bop.deriv_funs.∇ₓg_rows, bop.deriv_funs.∇ₓg_cols, ∇ₓg_vals)
-    x2_inds = bop.n₁+1:bop.n₁+bop.n₂
+    x2_inds = bop.n1+1:bop.n1+bop.n2
     is_stationary = all(isapprox.(∇ₓf[x2_inds] - ∇ₓg[:, x2_inds]' * λ, 0; atol=2 * tol))
     is_primal_feas = all(bop.g(x) .≥ 0 - tol) # primal feas
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
@@ -384,6 +384,7 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
 
     if is_using_PATH
         θ_out, status, _ = bop.solve_follower_KKT_mcp(x1)
+
         x2 = θ_out[1:bop.n2]
         init_z_success = status == PATHSolver.MCP_Solved
     else
@@ -435,8 +436,8 @@ function update_v!(v, Λ, bop, Ji_bounds, v_l, v_u, Gh_l, Gh_u, θ_l, θ_u, θ_i
         θ_init[bop.θ_inds["v"]] .= v
         θ_l[bop.θ_inds["z"]] .= Ji_bounds.z_l
         θ_u[bop.θ_inds["z"]] .= Ji_bounds.z_u
-        θ_l[bop.θ_inds["rₕ"]] .= Ji_bounds.h_l
-        θ_u[bop.θ_inds["rₕ"]] .= Ji_bounds.h_u
+        θ_l[bop.θ_inds["rh"]] .= Ji_bounds.h_l
+        θ_u[bop.θ_inds["rh"]] .= Ji_bounds.h_u
         θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init)
         v_out = θ_out[bop.θ_inds["v"]]
         Λ_out = θ_out[bop.θ_inds["Λ"]]

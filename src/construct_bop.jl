@@ -215,11 +215,12 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
         ("r1" => nv+m+1:nv+m+m1),
         ("rh" => nv+m+m1+1:nv+2*m),
     ])
-    θ_l₀ = fill(-Inf, n_θ)
-    θ_l₀[θ_inds["z"]] .= z_l₀
-    θ_l₀[θ_inds["Λ1"]] .= 0
+    # θ := [v_sym; Λ_sym; r_sym] 
+    θ_l₀ = fill(-Inf, n_θ) 
     θ_u₀ = fill(Inf, n_θ)
-    θ_u₀[θ_inds["z"]] .= z_u₀
+    θ_l₀[θ_inds["rh"]] .= z_l₀
+    θ_u₀[θ_inds["rh"]] .= z_u₀
+
     solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(n_θ, θ_l₀, θ_u₀, θ_sym, F_sym, Gh_sym, v_sym, Λ_sym, r_sym)
 
     # TODO: used only for verification, this should be optional to save construction time in the future
@@ -271,7 +272,7 @@ function setup_follower_nlp(n1, n2, m2, x2_l, x2_u, g_l, g_u, x_sym, λ_sym, x2_
     (∇ₓ₂g_rows, ∇ₓ₂g_cols, ∇ₓ₂g_vals) = SparseArrays.findnz(∇ₓ₂g_sym)
     ∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals, x_sym; expression=Val{false})[2]
 
-    obj_factor = Symbolics.@variables(σf)[1]
+    obj_factor = Symbolics.@variables(of)[1]
     if isempty(λ_sym)
         L = obj_factor * f_sym
     else
@@ -287,34 +288,34 @@ function setup_follower_nlp(n1, n2, m2, x2_l, x2_u, g_l, g_u, x_sym, λ_sym, x2_
 
     function solve_follower_nlp(x1; x2_init=zeros(n2), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
         x[1:n1] .= x1
-        x₂_inds = n1+1:n1+n2
+        x2_inds = n1+1:n1+n2
 
         function eval_f(x2::Vector{Float64})
-            x[x₂_inds] .= x2
+            x[x2_inds] .= x2
             f(x)
         end
 
         function eval_g(g::Vector{Float64}, x2::Vector{Float64})
-            x[x₂_inds] .= x2
+            x[x2_inds] .= x2
             g!(g, x)
         end
 
         function eval_∇ₓ₂f(∇ₓ₂f::Vector{Float64}, x2::Vector{Float64})
-            x[x₂_inds] .= x2
+            x[x2_inds] .= x2
             ∇ₓ₂f!(∇ₓ₂f, x)
         end
 
         function eval_∇ₓ₂g_vals(∇ₓ₂g_vals::Vector{Float64}, x2::Vector{Float64})
-            x[x₂_inds] .= x2
+            x[x2_inds] .= x2
             ∇ₓ₂g_vals!(∇ₓ₂g_vals, x)
         end
 
-        function eval_∇²ₓ₂L_vals(∇²ₓ₂L_vals::Vector{Float64}, x2::Vector{Float64}, obj_factor::Float64, λ::Vector{Float64})
-            x[x₂_inds] .= x2
-            ∇ₓ₂ₓ₂L_vals!(∇²ₓ₂L_vals, x, obj_factor, λ)
+        function eval_∇ₓ₂ₓ₂L_vals(∇ₓ₂ₓ₂L_vals::Vector{Float64}, x2::Vector{Float64}, obj_factor::Float64, λ::Vector{Float64})
+            x[x2_inds] .= x2
+            ∇ₓ₂ₓ₂L_vals!(∇ₓ₂ₓ₂L_vals, x, obj_factor, λ)
         end
 
-        solve = setup_nlp_solve_IPOPT(n2, m2, x2_l, x2_u, g_l, g_u, eval_f, eval_g, eval_∇ₓ₂f, ∇ₓ₂g_rows, ∇ₓ₂g_cols, eval_∇ₓ₂g_vals, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, eval_∇²ₓ₂L_vals)
+        solve = setup_nlp_solve_IPOPT(n2, m2, x2_l, x2_u, g_l, g_u, eval_f, eval_g, eval_∇ₓ₂f, ∇ₓ₂g_rows, ∇ₓ₂g_cols, eval_∇ₓ₂g_vals, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, eval_∇ₓ₂ₓ₂L_vals)
         solve(; x_init=x2_init, tol, max_iter, print_level, is_using_HSL)
     end
 end
@@ -324,14 +325,14 @@ function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym
     z_sym = [x2_sym; λ_sym; s_sym]
     n_z = length(z_sym)
     z_l = fill(-Inf, n_z)
+    z_u = fill(Inf, n_z)
     #θ_l[θ_inds["λ"]] .= 0.0
     z_l[z_inds["s"]] .= 0.0
-    z_u = fill(Inf, n_z)
 
     if isempty(λ_sym)
         L = f_sym
     else
-        L = f_sym + g_sym' * λ_sym
+        L = f_sym - g_sym' * λ_sym
     end
 
     g_s_sym = g_sym .- s_sym
@@ -351,12 +352,12 @@ function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym
         x1_z[1:n1] .= x₁
 
         function eval_PF!(F, z::Vector{Float64})
-            x1_z[z_inds["s"]] .= z
+            x1_z[n1+1:end] .= z
             PF!(F, x1_z)
         end
 
         function eval_PJ_vals!(J_vals, z::Vector{Float64})
-            x1_z[z_inds["s"]] .= z
+            x1_z[n1+1:end] .= z
             PJ_vals!(J_vals, x1_z)
         end
 
@@ -390,7 +391,7 @@ function setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, G_sym, g_sym)
     if isempty(Λ_sym)
         L_feas = 0.0
     else
-        L_feas = Λ_sym' * Gg_sym # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
+        L_feas = Gg_sym' * Λ_sym # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
     end
 
     ∇ₓL = Symbolics.gradient(L_feas, x_sym)
@@ -413,8 +414,8 @@ function setup_BOPᵢ_nlp(nᵥ, m, v_l₀, v_u₀, Gh_l₀, Gh_u₀, v_sym, F_sy
     ∇ᵥGh_vals! = Symbolics.build_function(∇ᵥGh_vals_sym, v_sym; expression=Val{false})[2]
 
     Λ = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
-    obj_factor = Symbolics.@variables(σf)[1]
-    L_sym = obj_factor * F_sym + Gh_sym' * Λ # WARN: IPOPT convention: ∇²ᵥF(v) + Λᵀ ∇²ᵥ[G(v); h(v)]
+    obj_factor = Symbolics.@variables(of)[1]
+    L_sym = obj_factor * F_sym + Gh_sym' * Λ # WARN: IPOPT convention: ∇ᵥᵥF(v) + Λᵀ ∇ᵥᵥ[G(v); h(v)]
     ∇ᵥL_sym = Symbolics.gradient(L_sym, v_sym)
     ∇ᵥᵥL_sym = Symbolics.sparsejacobian(∇ᵥL_sym, v_sym)
     (∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_vals_sym) = SparseArrays.findnz(∇ᵥᵥL_sym)
@@ -500,18 +501,19 @@ end
 
 
 function setup_BOPᵢ_KKT_mcp(n_θ, θ_l₀, θ_u₀, θ_sym, F_sym, Gh_sym, v_sym, Λ_sym, r_sym)
-    L = F_sym + Gh_sym' * Λ_sym
+    L = F_sym - Gh_sym' * Λ_sym
     ∇ᵥL_sym = Symbolics.gradient(L, v_sym)
-    Gh_r = Gh_sym .- r_sym
-    F_sym = [∇ᵥL_sym; Gh_r; Λ_sym]
+    Gh_r_sym = Gh_sym .- r_sym
+    # F ⟂ θ = [v_sym; Λ_sym; r_sym] 
+    PF_sym = [∇ᵥL_sym; Gh_r_sym; Λ_sym]
 
-    F! = Symbolics.build_function(F_sym, θ_sym; expression=Val(false))[2]
-    J = Symbolics.sparsejacobian(F_sym, θ_sym)
+    PF! = Symbolics.build_function(PF_sym, θ_sym; expression=Val(false))[2]
+    PJ = Symbolics.sparsejacobian(PF_sym, θ_sym)
 
-    (J_rows, J_cols, J_vals) = SparseArrays.findnz(J)
-    J_vals! = Symbolics.build_function(J_vals, θ_sym; expression=Val{false})[2]
+    (PJ_rows, PJ_cols, PJ_vals) = SparseArrays.findnz(PJ)
+    PJ_vals! = Symbolics.build_function(PJ_vals, θ_sym; expression=Val{false})[2]
 
-    setup_mcp_solve_PATH(n_θ, θ_l₀, θ_u₀, F!, J_rows, J_cols, J_vals!)
+    setup_mcp_solve_PATH(n_θ, θ_l₀, θ_u₀, PF!, PJ_rows, PJ_cols, PJ_vals!)
 end
 
 """

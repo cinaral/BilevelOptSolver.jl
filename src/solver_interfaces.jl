@@ -106,11 +106,11 @@ J is the Jacobian: ∇ₓF
 ```
 """
 function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
-    @assert(n == length(x_l), "wrong x_l dimensions")
-    @assert(n == length(x_u), "wrong x_u dimensions")
+    #@assert(n == length(x_l), "wrong x_l dimensions")
+    #@assert(n == length(x_u), "wrong x_u dimensions")
 
     n_nz_J = length(J_rows)
-    @assert(n_nz_J == length(J_cols), "J_rows and J_cols dimensions do not match")
+    #@assert(n_nz_J == length(J_cols), "J_rows and J_cols dimensions do not match")
 
     J_shape = sparse(J_rows, J_cols, ones(Cdouble, n_nz_J), n, n)
     J_col = J_shape.colptr[1:end-1]
@@ -123,9 +123,9 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
         Cint(0)
     end
 
-    function eval_J(n, nnz, θ, col, len, row, vals)
+    function eval_J(n, nnz, x, col, len, row, vals)
         vals .= 0.0
-        J_vals!(vals, θ)
+        J_vals!(vals, x)
         col .= J_col
         len .= J_len
         row .= J_row
@@ -137,6 +137,7 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
     end
 
     function solve_mcp(; x_l=x_l, x_u=x_u, x_init=zeros(n), tol=1e-6, max_iter=1000, is_silent=true)
+        #Main.@infiltrate
         status, x, info = PATHSolver.solve_mcp(
             eval_F,
             eval_J,
