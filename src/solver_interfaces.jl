@@ -7,7 +7,7 @@ s.t.    x_l ≤ x ≤ x_u
         g_l ≤ g(x) ≤ g_u
 ```
 """
-function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇ₓ²L_rows, ∇ₓ²L_cols, ∇ₓ²L_vals!)
+function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals!)
     @assert(n == length(x_l), "wrong x_l dimensions")
     @assert(n == length(x_u), "wrong x_u dimensions")
     @assert(m == length(g_l), "wrong g_l dimensions")
@@ -16,8 +16,8 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
     n_nz_∇ₓg = length(∇ₓg_rows)
     @assert(n_nz_∇ₓg == length(∇ₓg_cols), "∇ₓg_rows and ∇ₓg_cols dimensions do not match")
 
-    n_nz_∇ₓ²L = length(∇ₓ²L_rows)
-    @assert(n_nz_∇ₓ²L == length(∇ₓ²L_cols), "∇ₓ²L_rows and ∇ₓ²L_cols dimensions do not match")
+    n_nz_∇ₓₓL = length(∇ₓₓL_rows)
+    @assert(n_nz_∇ₓₓL == length(∇ₓₓL_cols), "∇ₓₓL_rows and ∇ₓₓL_cols dimensions do not match")
 
     function eval_f(x::Vector{Float64})
         f(x)
@@ -40,7 +40,7 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
         end
     end
 
-    function eval_∇ₓ²L(
+    function eval_∇ₓₓL(
         x::Vector{Float64},
         rows::Vector{Int32},
         cols::Vector{Int32},
@@ -49,15 +49,15 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
         vals::Union{Nothing,Vector{Float64}},
     )
         if vals === nothing
-            rows .= ∇ₓ²L_rows
-            cols .= ∇ₓ²L_cols
+            rows .= ∇ₓₓL_rows
+            cols .= ∇ₓₓL_cols
         else
-            ∇ₓ²L_vals!(vals, x, obj_factor, λ)
+            ∇ₓₓL_vals!(vals, x, obj_factor, λ)
         end
     end
 
     # we return this function
-    function solve_nlp(; x_l=x_l, x_u=x_u, g_l=g_l, g_u=g_u, x_init=zeros(n), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
+    function solve_nlp(; g_l=g_l, g_u=g_u, x_init=zeros(n), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
         ipopt_prob = Ipopt.CreateIpoptProblem(
             n,
             x_l,
@@ -66,12 +66,12 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
             g_l,
             g_u,
             n_nz_∇ₓg,
-            n_nz_∇ₓ²L,
+            n_nz_∇ₓₓL,
             eval_f,
             eval_g,
             eval_∇ₓf,
             eval_∇ₓg,
-            eval_∇ₓ²L
+            eval_∇ₓₓL
         )
 
         Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
@@ -87,9 +87,7 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
 
         x = ipopt_prob.x
         λ = -ipopt_prob.mult_g # convention change!!
-        λ_x_l = -ipopt_prob.mult_x_L
-        λ_x_u = -ipopt_prob.mult_x_U
-        (; x, λ, λ_x_l, λ_x_u, solvestat, ipopt_prob)
+        (; x, λ, solvestat, ipopt_prob)
     end
     solve_nlp
 end
@@ -137,7 +135,6 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
     end
 
     function solve_mcp(; x_l=x_l, x_u=x_u, x_init=zeros(n), tol=1e-6, max_iter=1000, is_silent=true)
-        #Main.@infiltrate
         status, x, info = PATHSolver.solve_mcp(
             eval_F,
             eval_J,
