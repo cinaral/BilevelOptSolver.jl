@@ -23,7 +23,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false)
     #x_init::Vector{Float64}=zeros(bop.n₁ + bop.n₂); tol::Float64=1e-3; max_iter::Int64=200; verbosity::Int64=0; n_J_max::Int64=20; is_using_PATH::Bool=false; is_using_HSL::Bool=true
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
@@ -40,20 +40,20 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
         end
     end
 
-    nₓ = bop.n₁ + bop.n₂
+    nx = bop.n1 + bop.n2
 
     iter_count = 0
     is_converged = false
     is_sol_valid = false
     is_v_valid = false
 
-    x::Vector{Float64} = zeros(nₓ)
+    x::Vector{Float64} = zeros(nx)
     #λ = zeros(bop.m₂)
     #s = zeros(bop.m₂)
-    v = zeros(bop.nᵥ)
-    Λ = zeros(bop.m₁ + bop.mₕ)
+    v = zeros(bop.nv)
+    Λ = zeros(bop.m1 + bop.mh)
 
-    v[bop.v_inds["x"]] .= x_init[1:nₓ]
+    v[bop.v_inds["x"]] .= x_init[1:nx]
     v_l = copy(bop.v_l₀)
     v_u = copy(bop.v_u₀)
     Gh_l = copy(bop.Gh_l₀)
@@ -62,7 +62,7 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
     θ_u = copy(bop.θ_u₀)
     θ_init = zeros(bop.n_θ)
 
-    prev_iter_v = zeros(bop.nᵥ)
+    prev_iter_v = zeros(bop.nv)
     prev_iter_v .= v
 
     is_Λ_feas_arr = fill(false, n_J_max)
@@ -305,13 +305,13 @@ function solve_bop(bop; x_init=zeros(bop.n₁ + bop.n₂), tol=1e-6, max_iter=20
 end
 
 function check_v_Λ_on_BOPᵢ!(v, Λ, bop, Gh_l, Gh_u, v_l, v_u, Λ_l, Λ_u; verbosity=0, tol=1e-6)
-    ∇ᵥGh_rows, ∇ᵥGh_cols, ∇ᵥGh_shape, ∇ᵥ²L_rows, ∇ᵥ²L_cols, ∇ᵥ²L_shape = bop.info_BOPᵢ()
-    Gh = zeros(bop.m₁ + bop.mₕ)
-    ∇ᵥF = zeros(bop.nᵥ)
+    ∇ᵥGh_rows, ∇ᵥGh_cols, ∇ᵥGh_shape, ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_shape = bop.info_BOPᵢ()
+    Gh = zeros(bop.m1 + bop.mh)
+    ∇ᵥF = zeros(bop.nv)
     ∇ᵥGh = sparse(∇ᵥGh_rows, ∇ᵥGh_cols, zeros(length(∇ᵥGh_rows)), ∇ᵥGh_shape[1], ∇ᵥGh_shape[2])
-    ∇ᵥ²L = sparse(∇ᵥ²L_rows, ∇ᵥ²L_cols, zeros(length(∇ᵥ²L_rows)), ∇ᵥ²L_shape[1], ∇ᵥ²L_shape[2])
-    bop.eval_BOPᵢ!(Gh, ∇ᵥF, ∇ᵥGh.nzval, ∇ᵥ²L.nzval, v, Λ)
-    ∇ᵥGhb = [∇ᵥGh; -LinearAlgebra.I(bop.nᵥ); LinearAlgebra.I(bop.nᵥ)]
+    ∇ᵥᵥL = sparse(∇ᵥᵥL_rows, ∇ᵥᵥL_cols, zeros(length(∇ᵥᵥL_rows)), ∇ᵥᵥL_shape[1], ∇ᵥᵥL_shape[2])
+    bop.eval_BOPᵢ!(Gh, ∇ᵥF, ∇ᵥGh.nzval, ∇ᵥᵥL.nzval, v, Λ)
+    ∇ᵥGhb = [∇ᵥGh; -LinearAlgebra.I(bop.nv); LinearAlgebra.I(bop.nv)]
 
     is_stationary = true || all(isapprox.(∇ᵥF - ∇ᵥGh' * Λ, 0; atol=2 * tol))
     is_complement = all(isapprox.(Λ .* Gh, 0; atol=2 * tol)) # complementarity
@@ -367,8 +367,8 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     ∇ₓg_vals = zeros(length(bop.deriv_funs.∇ₓg_rows))
     bop.deriv_funs.∇ₓg_vals!(∇ₓg_vals, x)
     ∇ₓg = sparse(bop.deriv_funs.∇ₓg_rows, bop.deriv_funs.∇ₓg_cols, ∇ₓg_vals)
-    x₂_inds = bop.n₁+1:bop.n₁+bop.n₂
-    is_stationary = all(isapprox.(∇ₓf[x₂_inds] - ∇ₓg[:, x₂_inds]' * λ, 0; atol=2 * tol))
+    x2_inds = bop.n₁+1:bop.n₁+bop.n₂
+    is_stationary = all(isapprox.(∇ₓf[x2_inds] - ∇ₓg[:, x2_inds]' * λ, 0; atol=2 * tol))
     is_primal_feas = all(bop.g(x) .≥ 0 - tol) # primal feas
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
     is_complement = all(isapprox.(λ .* bop.g(x), 0; atol=2 * tol)) # complementarity
@@ -378,16 +378,16 @@ end
 
 function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=false)
     # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
-    x₁ = @view v[bop.v_inds["x₁"]]
-    x₂ = @view v[bop.v_inds["x₂"]]
-    λ = zeros(bop.m₂)
+    x1 = @view v[bop.v_inds["x1"]]
+    x2 = @view v[bop.v_inds["x2"]]
+    λ = zeros(bop.m2)
 
     if is_using_PATH
-        θ_out, status, _ = bop.solve_follower_KKT_mcp(x₁)
-        x₂ = θ_out[1:bop.n₂]
+        θ_out, status, _ = bop.solve_follower_KKT_mcp(x1)
+        x2 = θ_out[1:bop.n2]
         init_z_success = status == PATHSolver.MCP_Solved
     else
-        x₂, λ, solvestat, _ = bop.solve_follower_nlp(x₁; x₂_init=x₂, is_using_HSL)
+        x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL)
         init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
     end
 
@@ -397,19 +397,19 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
             print("Resetting x to a bilevel feasible point. \n")
         end
 
-        x_feas, _, _, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x₁; x₂])
+        x_feas, _, _, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2])
         bilevel_feas_success = solvestat == 0 || solvestat == 1
 
         if bilevel_feas_success
-            x₁ .= x_feas[bop.v_inds["x₁"]]
-            x₂ .= x_feas[bop.v_inds["x₂"]]
+            x1 .= x_feas[bop.v_inds["x1"]]
+            x2 .= x_feas[bop.v_inds["x2"]]
 
             if is_using_PATH
-                θ_out, status, _ = bop.solve_follower_KKT_mcp(x₁)
-                x₂ = θ_out[1:bop.n₂]
+                θ_out, status, _ = bop.solve_follower_KKT_mcp(x1)
+                x2 = θ_out[1:bop.n2]
                 init_z_success = status == PATHSolver.MCP_Solved
             else
-                x₂, λ, _, _, solvestat, _ = bop.solve_follower_nlp(x₁; x₂_init=x₂, is_using_HSL)
+                x2, λ, _, _, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL)
                 init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
             end
         else
@@ -420,10 +420,10 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
     end
 
     if init_z_success
-        v[bop.v_inds["x₁"]] .= x₁
-        v[bop.v_inds["x₂"]] .= x₂
+        v[bop.v_inds["x1"]] .= x1
+        v[bop.v_inds["x2"]] .= x2
         v[bop.v_inds["λ"]] .= λ
-        v[bop.v_inds["s"]] .= bop.g([x₁; x₂])
+        v[bop.v_inds["s"]] .= bop.g([x1; x2])
     end
 
     return init_z_success
@@ -470,7 +470,7 @@ K[j] =  { j: hⱼ = 0, l < z < u} case 2  : hⱼ active (l ≠ u)
 Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3] and J[4]
 """
 function check_is_sol_valid(bop, v; tol=1e-3)
-    Gh = zeros(bop.m₁ + bop.mₕ)
+    Gh = zeros(bop.m1 + bop.mh)
     bop.Gh!(Gh, v)
     h = @view Gh[bop.Gh_inds["h"]]
     z = @view v[bop.v_inds["z"]]
@@ -479,7 +479,7 @@ function check_is_sol_valid(bop, v; tol=1e-3)
     K = Dict{Int,Vector{Int}}()
 
     # note which constraints are active
-    for j in 1:bop.mₕ
+    for j in 1:bop.mh
         Kj = Int[]
 
         if isapprox(z_l[j], z_u[j]; atol=2 * tol)
@@ -515,8 +515,8 @@ function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0)
     end
 
     # enumerate the ambiguous indexes
-    ambigu_inds = [i for i in 1:bop.mₕ if length(K[i]) > 1]
-    single_inds = setdiff(1:bop.mₕ, ambigu_inds)
+    ambigu_inds = [i for i in 1:bop.mh if length(K[i]) > 1]
+    single_inds = setdiff(1:bop.mh, ambigu_inds)
     It = Iterators.product([K[i] for i in ambigu_inds]...)
 
     for assignment in It
@@ -533,10 +533,10 @@ function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0)
 end
 
 function convert_J_to_bounds(J, bop)
-    h_l = zeros(bop.mₕ)
-    h_u = zeros(bop.mₕ)
-    z_l = zeros(bop.mₕ)
-    z_u = zeros(bop.mₕ)
+    h_l = zeros(bop.mh)
+    h_u = zeros(bop.mh)
+    z_l = zeros(bop.mh)
+    z_u = zeros(bop.mh)
     z_l₀ = bop.v_l₀[bop.v_inds["z"]]
     z_u₀ = bop.v_u₀[bop.v_inds["z"]]
 

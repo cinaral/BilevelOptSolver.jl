@@ -85,7 +85,7 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
     if BOLIB.Ff_optimal[3] == 1 # star means optimal
         if isapprox(Ff, Ff_star; atol=2 * tol)
             is_optimal = true
-            rating = "optimal"
+            rating = "optimal Ff"
         elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
             is_optimal = true
             if Ff[2] < Ff_star[2] - tol
@@ -97,12 +97,12 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
             is_optimal = true
             rating = "better than optimal?!"
         else
-            rating = "SUBOPTIMAL"
+            rating = "SUBOPTIMAL Ff"
         end
     elseif BOLIB.Ff_optimal[3] == 2 # star means best
         if isapprox(Ff, Ff_star; atol=2 * tol)
             is_best = true
-            rating = "best known"
+            rating = "best known Ff"
         elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
             is_best = true
             if Ff[2] < Ff_star[2] - tol
@@ -112,9 +112,9 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
             end
         elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
             is_best = true
-            rating = "better than best known"
+            rating = "better than best known Ff"
         else
-            rating = "WORSE than best known"
+            rating = "WORSE than best known Ff"
         end
     else
         rating = "no reference solution"
