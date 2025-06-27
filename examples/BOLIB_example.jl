@@ -3,13 +3,15 @@ using BilevelOptSolver
 include("../src/BOLIB_utils.jl")
 using BenchmarkTools
 using ProfileView
-# Change this to any BOLIB example, e.g.: AllendeStill2013, AnEtal2009, Bard1988Ex2, LamparielloSagratella2017Ex23, Zlobec2001b, AiyoshiShimizu1984Ex2
-b = BOLIB.AiyoshiShimizu1984Ex2()
+# Change this to any BOLIB example, e.g.: AllendeStill2013, AnEtal2009, Bard1988Ex2, LamparielloSagratella2017Ex23, Zlobec2001b, AiyoshiShimizu1984Ex2, Colson2002BIPA1
+
+# Quadratic-quadratic Bard1988Ex1, Bard1988Ex2, Bard1988Ex3, Dempe92
+b = BOLIB.Bard1988Ex1()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 elapsed_time = @elapsed begin
-    x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_PATH=false, is_using_HSL=true)
+    x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_HSL=true, is_check_v_agreem=false)
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)

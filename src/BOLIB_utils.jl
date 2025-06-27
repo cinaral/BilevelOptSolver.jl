@@ -5,7 +5,7 @@ end
 Pkg.develop(path=ENV["BOLIB_PATH"])
 import BOLIB
 
-function run_all_BOLIB_examples(; verbosity=0, is_using_PATH=false, is_using_HSL=false)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -26,10 +26,10 @@ function run_all_BOLIB_examples(; verbosity=0, is_using_PATH=false, is_using_HSL
 
         bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
         # dry runs for @time...
-        solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH)
-        #solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
+        solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
+
         elapsed_time = @elapsed begin
-            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=100, x_init=p.xy_init, verbosity, is_using_PATH, is_using_HSL)
+            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem)
         end
 
         if prob_count % 20 == 0
