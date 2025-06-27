@@ -23,7 +23,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false, seed=nothing, max_inv_sol_chain=10, max_restart_count=5)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false, seed=nothing, max_inv_sol_chain=10, max_restart_count=5)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -69,7 +69,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
     if isnothing(seed)
         seed = 0
     end
-    #follow_feas_set_tol = tol
+    fol_feas_set_tol = copy(tol)
 
     #v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J_max]
 
@@ -103,7 +103,9 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
             end
             init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH)
 
-            if !init_z_success
+            if init_z_success
+                restart_count = 0
+            else
                 if verbosity > 1
                     print("Failed to initialize z! Randomly initializing and restarting...\n")
                 end
@@ -126,26 +128,26 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
         end
 
         #if is_follower_KKT_satisfied(bop, v)
-        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=1e-3)
+        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
 
         if length(follow_feas_Js) < 1
             if verbosity > 2
                 print("Could not compute follower's feasible sets despite satisfying follower's KKT! Maybe it's a tolerance issue?\n")
             end
             #break
-            #restart_count += 1
+            restart_count += 1
 
-            #if restart_count > max_restart_count
-            #    if verbosity > 0
-            #        print("Reached max restarts!\n")
-            #    end
-            #    break
-            #end
-            #if verbosity > 1
-            #    follow_feas_set_tol = min(10^(restart_count) * tol, 1e-2)
-            #    print("Relaxing follower feasible set tolerance to $(round(follow_feas_set_tol, sigdigits=2)) and restarting...\n")
-            #end
-            #continue
+            if restart_count > max_restart_count
+                if verbosity > 0
+                    print("Reached max restarts!\n")
+                end
+                break
+            end
+            fol_feas_set_tol = min(10^(restart_count) * fol_feas_set_tol, 1e-2)
+            if verbosity > 1
+                print("Relaxing follower feasible set tolerance to $(round(fol_feas_set_tol, sigdigits=2)) and restarting...\n")
+            end
+            continue
         end
         #else
         #    if verbosity > 0

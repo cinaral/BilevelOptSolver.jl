@@ -29,7 +29,7 @@ function run_all_BOLIB_examples(; verbosity=0, is_using_PATH=false, is_using_HSL
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH)
         #solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_using_PATH=true)
         elapsed_time = @elapsed begin
-            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=p.xy_init, verbosity, is_using_PATH, is_using_HSL)
+            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=100, x_init=p.xy_init, verbosity, is_using_PATH, is_using_HSL)
         end
 
         if prob_count % 20 == 0

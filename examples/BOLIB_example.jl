@@ -1,14 +1,15 @@
 # https://biopt.github.io/bolib/
 using BilevelOptSolver
 include("../src/BOLIB_utils.jl")
-
+using BenchmarkTools
+using ProfileView
 # Change this to any BOLIB example, e.g.: AllendeStill2013, AnEtal2009, Bard1988Ex2, LamparielloSagratella2017Ex23, Zlobec2001b, AiyoshiShimizu1984Ex2
 b = BOLIB.AiyoshiShimizu1984Ex2()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 elapsed_time = @elapsed begin
-    x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=b.xy_init, verbosity=5, is_using_PATH=false, seed=123)
+    x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_PATH=false, is_using_HSL=true)
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
