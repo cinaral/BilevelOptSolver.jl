@@ -169,7 +169,6 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
     g_u = fill(Inf, m2)
     solve_follower_nlp = setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
     solve_follower_KKT_mcp = setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
-
     find_bilevel_feas_pt = setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, G_sym, g_sym)
 
     mΛ = m1 + mh + m2 # length([G; h; s])

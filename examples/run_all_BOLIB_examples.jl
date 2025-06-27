@@ -3,7 +3,7 @@ using BilevelOptSolver
 using Statistics
 include("../src/BOLIB_utils.jl")
 
-res = run_all_BOLIB_examples(; verbosity=1, max_iter=200, is_using_HSL=true, is_check_v_agreem=false);
+res = run_all_BOLIB_examples(; verbosity=1, max_iter=200, is_using_HSL=true, is_check_v_agreem=false, tol=1e-6, is_saving_CSV=true);
 #res_PATH = run_all_BOLIB_examples(; verbosity=1, is_using_PATH=true, is_using_HSL=true);
 
 success_elapsed_arr = res.elapsed_arr[res.success_arr]

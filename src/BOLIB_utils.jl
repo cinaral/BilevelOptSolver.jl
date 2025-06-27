@@ -5,17 +5,30 @@ end
 Pkg.develop(path=ENV["BOLIB_PATH"])
 import BOLIB
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false)
+using CSV, DataFrames
+
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false, is_using_PATH_to_init=false, tol=1e-6, is_saving_CSV=true)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
     suboptimalish_count = 0
     ps = []
     bops = []
-    sols = Vector{Float64}[]
+    prob_names = []
+    x_out_arr = Vector{Float64}[]
     success_arr = Bool[]
     iter_counts = Int64[]
     elapsed_arr = Float64[]
+    ratings = []
+    n1_arr = Int64[]
+    n2_arr = Int64[]
+    m1_arr = Int64[]
+    m2_arr = Int64[]
+    x_init_arr = Vector{Float64}[]
+    Ff_star_arr = Vector{Float64}[]
+    Ff_out_arr = Vector{Float64}[]
+
+
     is_success = false
     for prob in BOLIB.examples
         if "SinhaMaloDeb2014TP9" == prob || "SinhaMaloDeb2014TP10" == prob
@@ -29,7 +42,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem)
+            x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem, is_using_PATH_to_init, tol)
         end
 
         if prob_count % 20 == 0
@@ -65,14 +78,31 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
 
         push!(ps, p)
         push!(bops, bop)
-        push!(sols, x)
+        push!(prob_names, prob)
+        push!(n1_arr, bop.n1)
+        push!(n2_arr, bop.n2)
+        push!(m1_arr, bop.m1)
+        push!(m2_arr, bop.m2)
+        push!(x_init_arr, p.xy_init)
         push!(iter_counts, iter_count)
         push!(elapsed_arr, elapsed_time)
         push!(success_arr, is_success)
+        push!(x_out_arr, x)
+        push!(Ff_out_arr, Ff)
+        push!(Ff_star_arr, Ff_star)
+        push!(ratings, rating)
+
+
         prob_count += 1
     end
 
-    (; prob_count, success_count, optimalish_count, suboptimalish_count, ps, bops, sols, iter_counts, elapsed_arr, success_arr)
+    df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Success"=>success_arr, "Info"=>ratings, "Iterations"=>iter_counts, "Solve time (s)"=>elapsed_arr, "x"=>x_out_arr, "Ff"=>Ff_out_arr, "x_init"=> x_init_arr, "Ff*"=>Ff_star_arr)
+
+    if is_saving_CSV
+        CSV.write("BOLIB_results.csv", df)
+    end
+
+    (; prob_count, success_count, optimalish_count, suboptimalish_count, ps, bops, x_out_arr, iter_counts, elapsed_arr, success_arr)
 end
 
 function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)

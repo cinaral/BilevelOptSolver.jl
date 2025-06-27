@@ -85,14 +85,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     #end
 
     while !is_converged
-        iter_count += 1
-
-        if iter_count > max_iter
+        if iter_count >= max_iter
             if verbosity > 0
                 print("Max iterations reached!\n")
             end
             break
         end
+        iter_count += 1
+
 
         if verbosity > 1
             print("--Iteration $iter_count\n")
@@ -102,7 +102,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if verbosity > 2
                 print("v isn't valid, initializing v\n")
             end
-            init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH=is_using_PATH_to_init)
+            init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH=is_using_PATH_to_init, tol)
 
             restart_count += 1
             if restart_count >= max_restart_count
@@ -184,7 +184,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
             # does there exist Λ for v? feasibility problem so is_minimizing=false
-            is_Λ_feas = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL)
+            is_Λ_feas = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
 
             # debug
             is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
@@ -231,7 +231,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             Ji_bounds = convert_J_to_bounds(Ji, bop)
 
             if !is_v_valid || is_check_v_agreem
-                is_v_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL)
+                is_v_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
 
                 if !is_v_sol
                     if verbosity > 4
@@ -274,7 +274,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 continue
             end
 
-            is_v_temp_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL)
+            is_v_temp_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
 
             if !is_v_temp_sol
                 if verbosity > 1
@@ -385,7 +385,7 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
         x2 = θ_out[1:bop.n2]
         init_z_success = status == PATHSolver.MCP_Solved
     else
-        x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol=tol / 1e1)
+        x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol)
         init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
     end
 
@@ -395,7 +395,7 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
             print("Resetting x to a bilevel feasible point. \n")
         end
 
-        x_feas, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2])
+        x_feas, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2]; tol)
         bilevel_feas_success = solvestat == 0 || solvestat == 1
 
         if bilevel_feas_success
@@ -432,14 +432,15 @@ is_minimizing = false: BOPᵢ KKT is solved as an MCP
 is_minimizing = true: BOPᵢ is solved as an NLP
 is_using_HSL = true: Use HSL LP solver back-end when solving the NLP
 """
-function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL=false)
+function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL=false, tol=1e-6)
     is_v_valid::Bool = false
     if is_minimizing
         Ghs_l[bop.Ghs_inds["h"]] .= Ji_bounds.h_l
         Ghs_u[bop.Ghs_inds["h"]] .= Ji_bounds.h_u
         Ghs_l[bop.Ghs_inds["s"]] .= Ji_bounds.z_l[bop.z_inds["s"]]
         Ghs_u[bop.Ghs_inds["s"]] .= Ji_bounds.z_u[bop.z_inds["s"]]
-        v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, is_using_HSL=is_using_HSL)
+        
+        v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v; is_using_HSL, tol)
         is_v_valid = solvestat == 0 || solvestat == 1
     else
         θ_init[bop.θ_inds["v"]] .= v
@@ -448,7 +449,7 @@ function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_
         θ_l[bop.θ_inds["rh"]] .= Ji_bounds.h_l
         θ_u[bop.θ_inds["rh"]] .= Ji_bounds.h_u
 
-        θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init)
+        θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol)
         v_out = θ_out[bop.θ_inds["v"]]
         Λ_out = θ_out[bop.θ_inds["Λ"]]
         is_v_valid = status == PATHSolver.MCP_Solved
