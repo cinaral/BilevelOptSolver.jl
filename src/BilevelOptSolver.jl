@@ -6,6 +6,7 @@ using LinearAlgebra
 using Ipopt
 using PATHSolver
 using HiGHS
+using Random
 import Pkg
 
 if haskey(ENV, "HSL_PATH")

@@ -23,8 +23,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false)
-    #x_init::Vector{Float64}=zeros(bop.n₁ + bop.n₂); tol::Float64=1e-3; max_iter::Int64=200; verbosity::Int64=0; n_J_max::Int64=20; is_using_PATH::Bool=false; is_using_HSL::Bool=true
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, verbosity=0, n_J_max=20, is_using_PATH=false, is_using_HSL=false, seed=nothing, max_inv_sol_chain=10, max_restart_count=5)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -48,11 +47,9 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
     is_v_valid = false
 
     x::Vector{Float64} = zeros(nx)
-    #λ = zeros(bop.m₂)
-    #s = zeros(bop.m₂)
     v = zeros(bop.nv)
     Λ = zeros(bop.mΛ)
-    #Main.@infiltrate
+
     v[bop.v_inds["x"]] .= x_init[1:nx]
 
     Ghs_l = copy(bop.Ghs_l₀)
@@ -66,6 +63,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
 
     is_Λ_feas_arr = fill(false, n_J_max)
     new_v_ind_counter = 0
+    invalid_sol_counter = 0
+    restart_count = 0
+
+    if isnothing(seed)
+        seed = 0
+    end
+    #follow_feas_set_tol = tol
+
     #v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J_max]
 
     #Λ_all_arr = [Vector{Float64}(undef, bop.m₁ + bop.mₕ + 2 * bop.nᵥ) for _ = 1:n_J_max]
@@ -99,10 +104,18 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
             init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH)
 
             if !init_z_success
-                if verbosity > 0
-                    print("Failed to initialize z!\n")
+                if verbosity > 1
+                    print("Failed to initialize z! Randomly initializing and restarting...\n")
                 end
-                break
+
+                v[bop.v_inds["x"]] .= 10^(restart_count) * (0.5 .- rand(MersenneTwister(seed + restart_count), bop.n1 + bop.n2))
+                restart_count += 1
+                if restart_count >= max_restart_count
+                    if verbosity > 0
+                        print("Reached maximum restart count, terminating!\n")
+                    end
+                    break
+                end
             end
         end
 
@@ -112,14 +125,34 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
             display(v)
         end
 
-        follow_feas_Js = compute_follow_feas_ind_sets(bop, v)
+        #if is_follower_KKT_satisfied(bop, v)
+        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=1e-3)
+
         if length(follow_feas_Js) < 1
-            if verbosity > 0
-                # this should never happen, this would mean somehow follower KKT isn't satisfied:
-                #@info "is follower KKT satisfied? $(is_follower_KKT_satisfied(bop, v))"
-                print("Invalid v: Could not compute follower feasible sets!\n")
+            if verbosity > 2
+                print("Could not compute follower's feasible sets despite satisfying follower's KKT! Maybe it's a tolerance issue?\n")
             end
+            #break
+            #restart_count += 1
+
+            #if restart_count > max_restart_count
+            #    if verbosity > 0
+            #        print("Reached max restarts!\n")
+            #    end
+            #    break
+            #end
+            #if verbosity > 1
+            #    follow_feas_set_tol = min(10^(restart_count) * tol, 1e-2)
+            #    print("Relaxing follower feasible set tolerance to $(round(follow_feas_set_tol, sigdigits=2)) and restarting...\n")
+            #end
+            #continue
         end
+        #else
+        #    if verbosity > 0
+        #        print("Despite claimed initialize_z! success, somehow follower's KKT are not satisfied!\n")
+        #    end
+        #    break
+        #end
 
         n_J = length(follow_feas_Js)
 
@@ -147,11 +180,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
         for i in 1:n_J
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
-            # does there exist Λ_all=[Λ; Λ_v_l; Λ_v_u] for v?
-            #Main.@infiltrate
+            # does there exist Λ for v?
             is_Λ_feas = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
-
-            #is_Λ_feas = check_feas(Λ_l, Λ_u, A_l, A_u, A)
 
             if is_Λ_feas
                 is_Λ_feas_arr[i] = true
@@ -168,23 +198,37 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
 
         # try to update v at the manifold we couldn't find feasible sols
         if !is_all_Λ_feas
-            for i in 1:n_J
-                # looping over manifolds that didn't work out        
-                if !is_Λ_feas_arr[i]
-                    Ji = follow_feas_Js[i]
-                    Ji_bounds = convert_J_to_bounds(Ji, bop)
-
-                    is_v_valid = update_v!(v, Λ, bop, Ji_bounds, Ghs_l, Ghs_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
-
-                    if is_v_valid
-                        if verbosity > 2
-                            print("i=$i: We could solve BOPᵢ.\n")
-                        end
-                        # we update v with the first one that solves BOPᵢ but this could be done differently
-                        break
-                    end
-                end
+            new_v_ind_counter += 1
+            if new_v_ind_counter > n_J
+                new_v_ind_counter = 1
             end
+
+            for i in 1:n_J
+                i_shifted = (i + new_v_ind_counter) % n_J
+                if i_shifted == 0
+                    i_shifted = n_J
+                end
+                Ji = follow_feas_Js[i_shifted]
+                Ji_bounds = convert_J_to_bounds(Ji, bop)
+
+                is_v_valid = update_v!(v, Λ, bop, Ji_bounds, Ghs_l, Ghs_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
+
+                if is_v_valid
+                    if verbosity > 2
+                        print("We could solve BOPᵢ at i=$i_shifted.\n")
+                    end
+                    break
+                end
+
+            end
+            #restart_count += 1
+
+            #if restart_count > max_restart_count
+            #    if verbosity > 0
+            #        print("Reached max restarts!\n")
+            #    end
+            #    break
+            #end
             continue
         end
 
@@ -216,14 +260,27 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
         end
 
         # if the solution is not valid, we must choose a new v
-        if !is_sol_valid
+        if is_sol_valid
+            invalid_sol_counter = 0
+        else
             if verbosity > 1
                 print("Invalid solution, v doesn't solve all follower solutions\n")
             end
-
+            invalid_sol_counter += 1
             new_v_ind_counter += 1
+
+            if invalid_sol_counter > max_inv_sol_chain
+                restart_count += 1
+                if restart_count > max_restart_count
+                    if verbosity > 0
+                        print("Reached maximum invalid solution chain, terminating!\n")
+                    end
+                    break
+                end
+            end
+
             if new_v_ind_counter > n_J
-                new_v_ind_counter = n_J
+                new_v_ind_counter = 1
                 Ji = follow_feas_Js[new_v_ind_counter]
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
                 is_v_valid = update_v!(v, Λ, bop, Ji_bounds, Ghs_l, Ghs_u, θ_l, θ_u, θ_init; is_using_PATH, is_using_HSL)
@@ -232,6 +289,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=200, v
                 end
             end
         end
+
 
         #for i in 1:n_J
         #    Ji = follow_feas_Js[i]
@@ -310,16 +368,12 @@ function check_v_Λ_on_BOPᵢ!(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-6)
     ∇ᵥᵥL = sparse(∇ᵥᵥL_rows, ∇ᵥᵥL_cols, zeros(length(∇ᵥᵥL_rows)), ∇ᵥᵥL_shape[1], ∇ᵥᵥL_shape[2])
     bop.eval_BOPᵢ!(Ghs, ∇ᵥF, ∇ᵥGhs.nzval, ∇ᵥᵥL.nzval, v, Λ)
 
-    is_stationary = all(isapprox.(∇ᵥF - ∇ᵥGhs' * Λ, 0; atol=10 * tol))
-    is_complement = all(isapprox.(Λ .* Ghs, 0; atol=10 * tol)) # complementarity
+    is_stationary = all(isapprox.(∇ᵥF - ∇ᵥGhs' * Λ, 0; atol=2 * tol))
+    is_complement = all(isapprox.(Λ .* Ghs, 0; atol=2 * tol)) # complementarity
     is_primal_feas = all(Ghs .≥ Ghs_l .- tol) && all(Ghs .≤ Ghs_u .+ tol)
 
     is_sol_valid = true
-    if !(is_stationary && is_complement && is_primal_feas )
-        if verbosity > 1
-            print("v does not satisfy BOPᵢ KKT!\n")
-        end
-        #Main.@infiltrate
+    if !(is_stationary && is_complement && is_primal_feas)
         is_sol_valid = false
     end
     is_sol_valid
@@ -343,19 +397,19 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     return is_stationary && is_primal_feas && is_dual_feas && is_complement
 end
 
-function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=false)
+function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=false, tol=1e-6)
     # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
     x1 = @view v[bop.v_inds["x1"]]
     x2 = @view v[bop.v_inds["x2"]]
     λ = zeros(bop.m2)
 
     if is_using_PATH
-        θ_out, status, _ = bop.solve_follower_KKT_mcp(x1)
+        θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; tol)
 
         x2 = θ_out[1:bop.n2]
         init_z_success = status == PATHSolver.MCP_Solved
     else
-        x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL)
+        x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol=tol / 1e1)
         init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
     end
 
@@ -373,11 +427,11 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
             x2 .= x_feas[bop.v_inds["x2"]]
 
             if is_using_PATH
-                θ_out, status, _ = bop.solve_follower_KKT_mcp(x1)
+                θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; tol)
                 x2 = θ_out[1:bop.n2]
                 init_z_success = status == PATHSolver.MCP_Solved
             else
-                x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL)
+                x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol)
                 init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
             end
         else
@@ -415,12 +469,10 @@ function update_v!(v, Λ, bop, Ji_bounds, Ghs_l, Ghs_u, θ_l, θ_u, θ_init; is_
         Ghs_u[bop.Ghs_inds["h"]] .= Ji_bounds.h_u
         Ghs_l[bop.Ghs_inds["s"]] .= Ji_bounds.z_l[bop.z_inds["s"]]
         Ghs_u[bop.Ghs_inds["s"]] .= Ji_bounds.z_u[bop.z_inds["s"]]
-#Main.@infiltrate
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, is_using_HSL=is_using_HSL)
         is_BOPᵢ_solved = solvestat == 0 || solvestat == 1
     end
 
-    #Main.@infiltrate
     v .= v_out # even if it's not solved, we update v so we can try to initialize z again
     Λ .= Λ_out
     is_BOPᵢ_solved

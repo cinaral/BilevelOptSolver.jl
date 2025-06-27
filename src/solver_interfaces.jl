@@ -134,7 +134,7 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
         PATHSolver.c_api_License_SetString(ENV["PATH_LICENSE_STRING"])
     end
 
-    function solve_mcp(; x_l=x_l, x_u=x_u, x_init=zeros(n), tol=1e-6, max_iter=1000, is_silent=true)
+    function solve_mcp(; x_l=x_l, x_u=x_u, x_init=zeros(n), tol=1e-6, max_iter=500, is_silent=true, verbosity=0)
         status, x, info = PATHSolver.solve_mcp(
             eval_F,
             eval_J,
@@ -146,13 +146,13 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
             jacobian_structure_constant=true,
             jacobian_data_contiguous=true,
             cumulative_iteration_limit=20_000,
-            major_iteration_limit=500,
+            major_iteration_limit=max_iter,
             time_limit=5,
-            convergence_tolerance=1e-6,
+            convergence_tolerance=tol,
             lemke_rank_deficiency_iterations=30, # fixes silent crashes " ** SOLVER ERROR ** Lemke: invertible basis could not be computed."
             preprocess=1,
             presolve=1,
-            output=0,
+            output=verbosity,
             output_options=0,
             output_errors=0,
             output_warnings=0,
