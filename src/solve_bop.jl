@@ -24,7 +24,7 @@ Verbosity:
 ```
 
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=3)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -52,6 +52,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     is_max_init_restarts = false
     is_max_restarts = false
     is_prev_v_set = false
+    is_none_BOPi_solved = false
 
     max_init_restart = 2
 
@@ -200,16 +201,16 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
 
-            is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
+            #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
 
             # debug
             # does there exist Λ for v? feasibility problem so is_minimizing=false
             is_Λ_feas = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
 
-            if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
-                #TODO 2025-06-29 jesus 
-                #@info "wtf is_Λ_feas_2 $is_Λ_feas_2 = but is_Λ_feas $is_Λ_feas "
-            end
+            #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
+            #    #TODO 2025-06-29 jesus 
+            #    @info "wtf is_Λ_feas_2 $is_Λ_feas_2 = but is_Λ_feas $is_Λ_feas "
+            #end
 
             if is_Λ_feas
                 is_Λ_feas_arr[i] = true
@@ -267,7 +268,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if verbosity > 1
                 print("v is not valid (could not solve any BOPᵢ)!\n")
             end
-            continue
+            is_none_BOPi_solved = true
+            break
         end
 
         # now we check if the solution is valid. for this we need to find if the solution v is valid on all solutions, or if all solutions agree
@@ -280,7 +282,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if !is_check_v_agreem
                 is_v_Λ_valid_KKT = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
 
-                if !is_v_Λ_valid_KKT
+                # debug
+                #is_v_temp_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
+                #if (is_v_Λ_valid_KKT && !is_v_temp_sol) || (!is_v_Λ_valid_KKT && is_v_temp_sol)
+                #    #TODO 2025-06-29 jesus 
+                #    @info "BRO is_v_Λ_valid_KKT $is_v_Λ_valid_KKT = but is_v_temp_sol $is_v_temp_sol "
+                #end
+
+                if !(is_v_Λ_valid_KKT || is_v_temp_sol)
                     if verbosity > 4
                         print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
                     end
@@ -353,7 +362,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
 
             if verbosity > 4
-                print("dv $dv\n")
+                print("norm(dv) $norm_dv\n")
             end
 
             norm_dv_cur_idx += 1
@@ -384,7 +393,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         is_sol_valid = false
     end
 
-    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter)
+    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter, is_none_BOPi_solved)
 
     (; x, status, iter_count)
 end
@@ -392,7 +401,8 @@ end
 """
 ```
 Status:
-    -4: invalid v: other
+    -5: invalid v: other
+    -4: invalid v: none BOPi could be solved
     -3: invalid v: max iterations
     -2: invalid v: max init restarts
     -1: invalid v: max restarts
@@ -402,7 +412,7 @@ Status:
     3: valid v: other
 ```
 """
-function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter)
+function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter, is_none_BOPi_solved)
 
     if !is_sol_valid
         if is_max_restarts
@@ -411,8 +421,10 @@ function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_ini
             return -2
         elseif is_max_iter
             return -3
-        else
+        elseif is_none_BOPi_solved
             return -4
+        else
+            return -5
         end
     end
 

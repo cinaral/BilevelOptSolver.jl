@@ -7,7 +7,7 @@ import BOLIB
 
 using CSV, DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false, is_using_PATH_to_init=false, tol=1e-6, is_saving_CSV=true)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false, is_using_PATH_to_init=false, tol=1e-6, is_saving_CSV=true, norm_dv_len=10, conv_dv_len=3)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -41,7 +41,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem, is_using_PATH_to_init, tol)
+            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len)
         end
 
         if prob_count % 20 == 0
