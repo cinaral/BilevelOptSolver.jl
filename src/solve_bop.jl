@@ -90,6 +90,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     norm_dv_cur_idx = 1
     status = 0
 
+    i_idx_start_counter = 1
+
     while !is_converged
         if iter_count >= max_iter
             if verbosity > 1
@@ -206,7 +208,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             # debug
             # does there exist Λ for v? feasibility problem so is_minimizing=false
-            is_Λ_feas = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
+            is_Λ_feas = update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
 
             #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
             #    #TODO 2025-06-29 jesus 
@@ -238,31 +240,31 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         # by this point all follower solutions have feasible v, Λ
         is_v_valid = false
         is_v_sol = false
-        #is_v_valid = true
 
-        # We must check all BOPᵢ solutions to ensure the solution is valid, but first we need a solution
-        v_temp .= v
-        Λ_temp .= Λ
+        i_idx_start_counter += 1
+        if i_idx_start_counter > n_J
+            i_idx_start_counter = 1
+        end
 
         for i in 1:n_J
-            Ji = follow_feas_Js[i]
+            idx = (i_idx_start_counter + i - 1) % n_J + 1
+            Ji = follow_feas_Js[idx]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
 
-            if !is_v_valid || is_check_v_agreem
-                is_v_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
+            is_v_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
 
-                if !is_v_sol
-                    if verbosity > 4
-                        print("Could not solve BOPᵢ i=$i\n")
-                    end
-                    continue
+            if !is_v_sol
+                if verbosity > 4
+                    print("Could not solve BOPᵢ i=$i\n")
                 end
-                is_v_valid = true
-                v .= v_temp
-                Λ .= Λ_temp
-                # we just need one solution
-                break
+                continue
             end
+            # we just need one solution
+            is_v_valid = true
+            v .= v_temp
+            Λ .= Λ_temp
+            i_idx_start_counter = 1
+            break
         end
 
         if !is_v_valid
@@ -279,35 +281,39 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         for i in 1:n_J
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
+            #update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
 
-            if !is_check_v_agreem
-                is_v_Λ_valid_KKT = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
+            #if !is_check_v_agreem
+            #    is_v_Λ_valid_KKT = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
+            #    if is_v_Λ_valid_KKT
+            #        if verbosity > 4
+            #            print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
+            #        end
+            #        is_sol_valid = false
+            #        break
+            #    end
+            #    continue
+            #end
 
-                # debug
-                #is_v_temp_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
-                #if (is_v_Λ_valid_KKT && !is_v_temp_sol) || (!is_v_Λ_valid_KKT && is_v_temp_sol)
-                #    #TODO 2025-06-29 jesus 
-                #    @info "BRO is_v_Λ_valid_KKT $is_v_Λ_valid_KKT = but is_v_temp_sol $is_v_temp_sol "
-                #end
+            is_v_Λ_valid_KKT = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
 
-                if is_v_Λ_valid_KKT 
-                    if verbosity > 4
-                        print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
-                    end
-                    is_sol_valid = false
-                    break
-                end
-                continue
-            end
+            #is_v_Λ_valid_KKT_2 = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
+            # debug
+            #if (is_v_Λ_valid_KKT_2 && !is_v_Λ_valid_KKT) || (!is_v_Λ_valid_KKT_2 && is_v_Λ_valid_KKT)
+            #    #TODO 2025-06-29 jesus 
+            #    @info "BRO is_v_Λ_valid_KKT_2 $is_v_Λ_valid_KKT_2 = but is_v_Λ_valid_KKT $is_v_Λ_valid_KKT "
+            #end
 
-            is_v_temp_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
-
-            if !is_v_temp_sol
+            if !is_v_Λ_valid_KKT
                 if verbosity > 1
                     print("Could not solve BOPᵢ i=$i so we cannot check for v agreement!\n")
                 end
                 is_sol_valid = false
                 break
+            end
+
+            if !is_check_v_agreem
+                continue
             end
 
             if i == 1
@@ -561,21 +567,13 @@ is_using_HSL = true: Use HSL LP solver back-end when solving the NLP
 """
 function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL=false, tol=1e-6)
     is_v_valid::Bool = false
-    if is_minimizing
-        Ghs_l[bop.Ghs_inds["h"]] .= Ji_bounds.h_l
-        Ghs_u[bop.Ghs_inds["h"]] .= Ji_bounds.h_u
-        Ghs_l[bop.Ghs_inds["s"]] .= Ji_bounds.z_l[bop.z_inds["s"]]
-        Ghs_u[bop.Ghs_inds["s"]] .= Ji_bounds.z_u[bop.z_inds["s"]]
+    update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
 
+    if is_minimizing
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v; is_using_HSL, tol)
         is_v_valid = solvestat == 0 || solvestat == 1
     else
         θ_init[bop.θ_inds["v"]] .= v
-        θ_l[bop.θ_inds["z"]] .= Ji_bounds.z_l
-        θ_u[bop.θ_inds["z"]] .= Ji_bounds.z_u
-        θ_l[bop.θ_inds["rh"]] .= Ji_bounds.h_l
-        θ_u[bop.θ_inds["rh"]] .= Ji_bounds.h_u
-
         θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol)
         v_out = θ_out[bop.θ_inds["v"]]
         Λ_out = θ_out[bop.θ_inds["Λ"]]
@@ -586,6 +584,19 @@ function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_
     Λ .= Λ_out
     is_v_valid
 end
+
+function update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
+    Ghs_l[bop.Ghs_inds["h"]] .= Ji_bounds.h_l
+    Ghs_u[bop.Ghs_inds["h"]] .= Ji_bounds.h_u
+    Ghs_l[bop.Ghs_inds["s"]] .= Ji_bounds.z_l[bop.z_inds["s"]]
+    Ghs_u[bop.Ghs_inds["s"]] .= Ji_bounds.z_u[bop.z_inds["s"]]
+
+    θ_l[bop.θ_inds["z"]] .= Ji_bounds.z_l
+    θ_u[bop.θ_inds["z"]] .= Ji_bounds.z_u
+    θ_l[bop.θ_inds["rh"]] .= Ji_bounds.h_l
+    θ_u[bop.θ_inds["rh"]] .= Ji_bounds.h_u
+end
+
 
 """
 Check viable ways to satisfy h ⟂ z (aka Λₕ)
