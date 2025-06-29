@@ -7,16 +7,16 @@ using ProfileView
 
 # Quadratic-quadratic Bard1988Ex1, Bard1988Ex2, Bard1988Ex3, Dempe92
 # doesn't compile SinhaMaloDeb2014TP9, SinhaMaloDeb2014TP10
-b = BOLIB.CalamaiVicente1994a()
+b = BOLIB.CalveteGale1999P1()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 elapsed_time = @elapsed begin
-    x, is_converged, is_sol_valid, iter_count = solve_bop(bop; max_iter=200, x_init=b.xy_init, verbosity=5, is_using_HSL=true, is_check_v_agreem=false, tol=1e-4)
+    x, status, iter_count = solve_bop(bop; max_iter=200, x_init=b.xy_init, verbosity=5, is_using_HSL=true, is_check_v_agreem=false, tol=1e-6, is_using_PATH_to_init=false, norm_dv_len=10, conv_dv_len=3)
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
-print("converged = $is_converged, valid = $is_sol_valid, elapsed: $(round(elapsed_time, sigdigits=5)) s,\t" * rating * ",\t x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_star, sigdigits=5)))\n");
+print("status: [$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s),\t" * rating * ",\t x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_star, sigdigits=5)))\n");
 
 #include("../src/forrest_solver.jl")
 #using .forrest_solver

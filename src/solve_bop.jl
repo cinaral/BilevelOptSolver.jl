@@ -22,8 +22,9 @@ Verbosity:
     5: function trace
     6: full: v trace
 ```
+
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -44,6 +45,15 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     is_converged = false
     is_sol_valid = false
     is_v_valid = false
+    is_fol_KKT_ok = false
+    is_dv_mon_decreasing = false
+    is_norm_dv_full = false
+    is_max_iter = false
+    is_max_init_restarts = false
+    is_max_restarts = false
+    is_prev_v_set = false
+
+    max_init_restart = 2
 
     x::Vector{Float64} = zeros(nx)
     v = zeros(bop.nv)
@@ -51,7 +61,6 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
     v_temp = copy(v)
     Λ_temp = copy(Λ)
-
 
     v[bop.v_inds["x"]] .= x_init[1:nx]
 
@@ -65,6 +74,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     prev_iter_v .= v
 
     is_Λ_feas_arr = fill(false, n_J_max)
+
+    init_restart_count = -1
     restart_count = -1
 
     if isnothing(seed)
@@ -72,23 +83,17 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     end
     fol_feas_set_tol = copy(tol)
 
-    #v_arr = [Vector{Float64}(undef, bop.nᵥ) for _ = 1:n_J_max]
-
-    #Λ_all_arr = [Vector{Float64}(undef, bop.m₁ + bop.mₕ + 2 * bop.nᵥ) for _ = 1:n_J_max]
-    #is_v_valid_arr = fill(false, n_J_max)
-
-
-    #θ_init = zeros(bop.n_θ)
-
-    #function terminate()
-    #    break
-    #end
+    norm_dv_arr = zeros(norm_dv_len)
+    chron_norm_dv_arr = copy(norm_dv_arr)
+    norm_dv_cur_idx = 1
+    status = 0
 
     while !is_converged
         if iter_count >= max_iter
-            if verbosity > 0
+            if verbosity > 1
                 print("Max iterations reached!\n")
             end
+            is_max_iter = true
             break
         end
         iter_count += 1
@@ -99,16 +104,24 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         end
 
         if !is_v_valid
+            is_fol_KKT_ok = is_follower_KKT_satisfied(bop, v)
+            if verbosity > 4
+                print("v isn't valid but follower solution is fine.\n")
+            end
+        end
+
+        if !is_fol_KKT_ok
             if verbosity > 2
                 print("v isn't valid, initializing v\n")
             end
             init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH=is_using_PATH_to_init, tol)
 
-            restart_count += 1
-            if restart_count >= max_restart_count
+            init_restart_count += 1
+            if init_restart_count >= max_init_restart
                 if verbosity > 0
-                    print("Reached maximum restart count, terminating!\n")
+                    print("Reached maximum init attempt, terminating!\n")
                 end
+                is_max_init_restarts = true
                 break
             end
 
@@ -117,7 +130,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                     print("Failed to initialize z! Randomly initializing and restarting...\n")
                 end
 
-                v[bop.v_inds["x"]] .= 10^(restart_count) * (0.5 .- rand(MersenneTwister(seed + restart_count), bop.n1 + bop.n2))
+                v[bop.v_inds["x"]] .= 10^(init_restart_count) * (0.5 .- rand(MersenneTwister(seed + init_restart_count), bop.n1 + bop.n2))
             end
         end
 
@@ -127,12 +140,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             display(v)
         end
 
-        if !is_follower_KKT_satisfied(bop, v)
+        is_fol_KKT_ok = is_follower_KKT_satisfied(bop, v)
+        if !is_fol_KKT_ok
             if verbosity > 1
                 print("wtf somehow follower KKT isn't satisfied\n")
             end
             continue
         end
+
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
 
         if length(follow_feas_Js) < 1
@@ -142,12 +157,13 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             restart_count += 1
 
             if restart_count > max_restart_count
-                if verbosity > 0
+                if verbosity > 1
                     print("Reached max restarts!\n")
                 end
+                is_max_restarts = true
                 break
             end
-            fol_feas_set_tol = min(10^(restart_count) * fol_feas_set_tol, 1e-2)
+            fol_feas_set_tol = min(10^(restart_count) * fol_feas_set_tol, 1e-1)
             if verbosity > 1
                 print("Relaxing follower feasible set tolerance to $(round(fol_feas_set_tol, sigdigits=2)) and restarting...\n")
             end
@@ -183,16 +199,16 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         for i in 1:n_J
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
+
+            is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
+
+            # debug
             # does there exist Λ for v? feasibility problem so is_minimizing=false
             is_Λ_feas = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
 
-            # debug
-            is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
-
             if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
-                #@info is_Λ_feas
-                #@info is_Λ_feas_2
-                #Main.@infiltrate
+                #TODO 2025-06-29 jesus 
+                #@info "wtf is_Λ_feas_2 $is_Λ_feas_2 = but is_Λ_feas $is_Λ_feas "
             end
 
             if is_Λ_feas
@@ -293,29 +309,68 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 break
             end
         end
+
         # by this point is_sol_valid=true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
-        dv = v[bop.v_inds["x"]] - prev_iter_v[bop.v_inds["x"]]
-        prev_iter_v .= v
-        #@info LinearAlgebra.norm(dv)
-        if LinearAlgebra.norm(dv) < conv_tol
-            is_converged = true
-            break
+        if !is_prev_v_set
+            prev_iter_v .= v
+            is_prev_v_set = true
         else
-            restart_count = 0
-            if verbosity > 3
-                print("Found new v that's a valid solution ")
+            dv = v[bop.v_inds["x"]] - prev_iter_v[bop.v_inds["x"]]
+            prev_iter_v .= v
+            norm_dv = LinearAlgebra.norm(dv)
+
+            norm_dv_arr[norm_dv_cur_idx] = norm_dv
+
+            if !is_norm_dv_full && norm_dv_cur_idx == norm_dv_len
+                is_norm_dv_full = true
             end
-            if verbosity > 5
-                display(v)
-            elseif verbosity > 3
-                print("\n")
+
+            # in chronological order
+            if !is_norm_dv_full
+                chron_norm_dv_arr[end-norm_dv_cur_idx+1:end] .= norm_dv_arr[1:norm_dv_cur_idx]
+            else
+                if norm_dv_cur_idx < norm_dv_len
+                    chron_norm_dv_arr .= [norm_dv_arr[norm_dv_cur_idx+1:end]; norm_dv_arr[1:norm_dv_cur_idx]]
+                else
+                    chron_norm_dv_arr .= norm_dv_arr
+                end
             end
+
+            # we check convergence by tracking norm_dv_len dv's, if all is less than conv tol we're done 
+            if (is_norm_dv_full || norm_dv_cur_idx ≥ conv_dv_len) && all(chron_norm_dv_arr[end-conv_dv_len+1:end] .< conv_tol)
+                if verbosity > 3
+                    print("Converged in $iter_count iterations! (Last $conv_dv_len norm(dv) is less than conv tol $conv_tol)\n")
+                end
+                is_converged = true
+                break
+            elseif is_norm_dv_full && all(diff(chron_norm_dv_arr) .≤ -tol)
+                # also it's worth checking if dv is slowly
+                if verbosity > 3
+                    print("last $norm_dv_len norm(dv) is monotonously decreasing without meeting conv tol, terminating\n")
+                end
+                is_dv_mon_decreasing = true
+                break
+            end
+
+            if verbosity > 4
+                print("dv $dv\n")
+            end
+
+            norm_dv_cur_idx += 1
+            if norm_dv_cur_idx > norm_dv_len
+                norm_dv_cur_idx = 1
+            end
+        end
+
+        if verbosity > 5
+            print("v = ")
+            display(v)
         end
     end
 
     if is_converged
         if verbosity > 1
-            print("Converged in $iter_count iterations\n")
+            print("\n")
         end
     end
 
@@ -324,12 +379,53 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     # final sanity check
     if is_sol_valid && !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))# && is_follower_KKT_satisfied(bop, v))
         if verbosity > 0
-            print("Something went wrong, this allegedly valid solution was primal infeasible!\n")
+            print("Something went VERY wrong, this allegedly valid solution is bilevel infeasible!\n")
         end
         is_sol_valid = false
     end
 
-    (; x, is_converged, is_sol_valid, iter_count)
+    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter)
+
+    (; x, status, iter_count)
+end
+
+"""
+```
+Status:
+    -4: invalid v: other
+    -3: invalid v: max iterations
+    -2: invalid v: max init restarts
+    -1: invalid v: max restarts
+    0: success: valid v, converged
+    1: valid v: dv is monoton decreasing
+    2: valid v: max iterations
+    3: valid v: other
+```
+"""
+function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter)
+
+    if !is_sol_valid
+        if is_max_restarts
+            return -1
+        elseif is_max_init_restarts
+            return -2
+        elseif is_max_iter
+            return -3
+        else
+            return -4
+        end
+    end
+
+    if is_converged
+        return 0
+    elseif is_dv_mon_decreasing
+        return 1
+    elseif is_max_iter
+        return 2
+    else
+        return 3
+    end
+
 end
 
 function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-6)
@@ -361,7 +457,7 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     bop.deriv_funs.∇ₓg_vals!(∇ₓg_vals, x)
     ∇ₓg = sparse(bop.deriv_funs.∇ₓg_rows, bop.deriv_funs.∇ₓg_cols, ∇ₓg_vals)
     x2_inds = bop.n1+1:bop.n1+bop.n2
-    if bop.m2 > 1
+    if bop.m2 > 0
         is_stationary = all(isapprox.(∇ₓf[x2_inds] - ∇ₓg[:, x2_inds]' * λ, 0; atol=2 * tol))
     else
         is_stationary = all(isapprox.(∇ₓf[x2_inds], 0; atol=2 * tol))
@@ -390,6 +486,20 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
     end
 
     # if the feasible region of the follower is empty for x₁, this finds a bilevel feasible x to move to
+    if !init_z_success && !is_using_PATH
+        # first, if we hadn't already, let's try to MCP solve the follower KKT first 
+        θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; tol)
+
+        x2 = θ_out[1:bop.n2]
+        init_z_success = status == PATHSolver.MCP_Solved
+
+        if init_z_success
+            if verbosity > 0
+                print("We couldn't solve the follower NLP to init, but we could MCP solve the KKT... \n")
+            end
+        end
+    end
+
     if !init_z_success
         if verbosity > 1
             print("Resetting x to a bilevel feasible point. \n")
@@ -439,7 +549,7 @@ function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_
         Ghs_u[bop.Ghs_inds["h"]] .= Ji_bounds.h_u
         Ghs_l[bop.Ghs_inds["s"]] .= Ji_bounds.z_l[bop.z_inds["s"]]
         Ghs_u[bop.Ghs_inds["s"]] .= Ji_bounds.z_u[bop.z_inds["s"]]
-        
+
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v; is_using_HSL, tol)
         is_v_valid = solvestat == 0 || solvestat == 1
     else

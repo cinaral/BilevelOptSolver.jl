@@ -467,7 +467,7 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
         ∇ᵥGhs_vals!(∇ᵥGhs.nzval, v)
 
         # this part ensures dual feasibility
-        Λ_l = fill(0., mΛ)
+        Λ_l = fill(0.0, mΛ)
         Λ_u = fill(Inf, mΛ)
         Λ_l[Ghs_inds["h"]] .= z_l
         Λ_u[Ghs_inds["h"]] .= z_u
@@ -475,9 +475,9 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
         # constraint matrix is column-wise, this part checks :
         # ∇ᵥF - Λ' * ∇ᵥGhs = 0 (stationarity)
         # Λ' * Ghs = 0 (complementarity)
-        A_l = ∇ᵥF
-        A_u = ∇ᵥF
-        A = [∇ᵥGhs';]
+        A_l = [∇ᵥF; 0]
+        A_u = [∇ᵥF; 0]
+        A = [∇ᵥGhs'; Ghs']
 
         check_feas(Λ_l, Λ_u, A_l, A_u, A)
     end
