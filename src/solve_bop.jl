@@ -61,6 +61,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     Λ = zeros(bop.mΛ)
 
     v_temp = copy(v)
+    v_ref = copy(v)
     Λ_temp = copy(Λ)
 
     v[bop.v_inds["x"]] .= x_init[1:nx]
@@ -119,7 +120,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             init_restart_count += 1
             if init_restart_count >= max_init_restart
-                if verbosity > 0
+                if verbosity > 1
                     print("Reached maximum init attempt, terminating!\n")
                 end
                 is_max_init_restarts = true
@@ -289,7 +290,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 #    @info "BRO is_v_Λ_valid_KKT $is_v_Λ_valid_KKT = but is_v_temp_sol $is_v_temp_sol "
                 #end
 
-                if !(is_v_Λ_valid_KKT || is_v_temp_sol)
+                if is_v_Λ_valid_KKT 
                     if verbosity > 4
                         print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
                     end
@@ -309,13 +310,17 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 break
             end
 
-            norm_x_err = LinearAlgebra.norm(v_temp[bop.v_inds["x"]] - v[bop.v_inds["x"]]) # only checking x error
-            if (norm_x_err > v_agreement_tol)
-                if verbosity > 1
-                    print("BOPᵢ solutions disagree! norm x err: $norm_x_err\n")
+            if i == 1
+                v_ref = copy(v_temp)
+            else
+                norm_x_err = LinearAlgebra.norm(v_temp[bop.v_inds["x"]] - v_ref[bop.v_inds["x"]]) # only checking x error
+                if (norm_x_err > v_agreement_tol)
+                    if verbosity > 1
+                        print("BOPᵢ solutions disagree! norm x err: $norm_x_err\n")
+                    end
+                    is_sol_valid = false
+                    break
                 end
-                is_sol_valid = false
-                break
             end
         end
 
