@@ -5,9 +5,9 @@ end
 Pkg.develop(path=ENV["BOLIB_PATH"])
 import BOLIB
 
-using CSV, DataFrames
+using DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false, is_using_PATH_to_init=false, tol=1e-6, is_saving_CSV=true, norm_dv_len=10, conv_dv_len=3)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false, is_using_PATH_to_init=false, tol=1e-6, norm_dv_len=10, conv_dv_len=3, is_checking_min=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -41,7 +41,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len)
+            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len, is_checking_min)
         end
 
         if prob_count % 20 == 0
@@ -97,11 +97,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
 
     df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Status" => status_arr, "Success" => success_arr, "Rating" => ratings, "Iterations" => iter_counts, "Solve time (s)" => elapsed_arr, "x" => x_out_arr, "Ff" => Ff_out_arr, "x_init" => x_init_arr, "Ff*" => Ff_star_arr)
 
-    if is_saving_CSV
-        CSV.write("BOLIB_results.csv", df)
-    end
-
-    (; prob_count, success_arr, success_count, optimalish_count, suboptimalish_count, ps, bops, x_out_arr, iter_counts, elapsed_arr, status_arr)
+    (; prob_count, success_arr, success_count, optimalish_count, suboptimalish_count, ps, bops, x_out_arr, iter_counts, elapsed_arr, status_arr, df)
 end
 
 function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
