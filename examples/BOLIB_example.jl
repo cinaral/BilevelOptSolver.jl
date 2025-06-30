@@ -7,7 +7,7 @@ using ProfileView
 
 # Quadratic-quadratic Bard1988Ex1, Bard1988Ex2, Bard1988Ex3, Dempe92
 # doesn't compile SinhaMaloDeb2014TP9, SinhaMaloDeb2014TP10
-b = BOLIB.CalamaiVicente1994c()
+b = BOLIB.AllendeStill2013()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
