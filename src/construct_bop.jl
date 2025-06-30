@@ -475,9 +475,9 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
         # constraint matrix is column-wise, this part checks :
         # ∇ᵥF - Λ' * ∇ᵥGhs = 0 (stationarity)
         # Λ' * Ghs = 0 (complementarity)
-        A_l = [∇ᵥF; 0]
-        A_u = [∇ᵥF; 0]
-        A = [∇ᵥGhs'; Ghs']
+        A_l = ∇ᵥF
+        A_u = ∇ᵥF
+        A = [∇ᵥGhs';]
 
         check_feas(Λ_l, Λ_u, A_l, A_u, A)
     end

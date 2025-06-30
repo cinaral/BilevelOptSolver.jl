@@ -94,7 +94,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
     while !is_converged
         if iter_count >= max_iter
-            if verbosity > 1
+            if verbosity > 0
                 print("Max iterations reached!\n")
             end
             is_max_iter = true
@@ -122,7 +122,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             init_restart_count += 1
             if init_restart_count >= max_init_restart
-                if verbosity > 1
+                if verbosity > 0
                     print("Reached maximum init attempt, terminating!\n")
                 end
                 is_max_init_restarts = true
@@ -146,7 +146,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
         is_fol_KKT_ok = is_follower_KKT_satisfied(bop, v)
         if !is_fol_KKT_ok
-            if verbosity > 1
+            if verbosity > 0
                 print("wtf somehow follower KKT isn't satisfied\n")
             end
             continue
@@ -204,15 +204,15 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
 
-            #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
-
-            # debug
             # does there exist Λ for v? feasibility problem so is_minimizing=false
             is_Λ_feas = update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
+            # debug
+            #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
 
             #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
             #    #TODO 2025-06-29 jesus 
-            #    @info "wtf is_Λ_feas_2 $is_Λ_feas_2 = but is_Λ_feas $is_Λ_feas "
+            #    Main.@infiltrate
+            #    @info "update_v! returns $is_Λ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
             #end
 
             if is_Λ_feas
@@ -281,8 +281,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         for i in 1:n_J
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
-            #update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
-
+            #
             #if !is_check_v_agreem
             #    is_v_Λ_valid_KKT = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
             #    if is_v_Λ_valid_KKT
@@ -295,13 +294,15 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             #    continue
             #end
 
-            is_v_Λ_valid_KKT = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
+            is_v_Λ_valid_KKT = update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
+
+            update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
 
             #is_v_Λ_valid_KKT_2 = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
-            # debug
+            ## debug
             #if (is_v_Λ_valid_KKT_2 && !is_v_Λ_valid_KKT) || (!is_v_Λ_valid_KKT_2 && is_v_Λ_valid_KKT)
             #    #TODO 2025-06-29 jesus 
-            #    @info "BRO is_v_Λ_valid_KKT_2 $is_v_Λ_valid_KKT_2 = but is_v_Λ_valid_KKT $is_v_Λ_valid_KKT "
+            #    @info "Fugg:DD update_v! returns $is_v_Λ_valid_KKT but check_v_Λ_BOPᵢ_KKT returns $is_v_Λ_valid_KKT_2"
             #end
 
             if !is_v_Λ_valid_KKT
@@ -460,7 +461,7 @@ function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-6)
     bop.eval_BOPᵢ!(Ghs, ∇ᵥF, ∇ᵥGhs.nzval, ∇ᵥᵥL.nzval, v, Λ)
 
     is_stationary = all(isapprox.(∇ᵥF - ∇ᵥGhs' * Λ, 0; atol=2 * tol))
-    is_complement = all(isapprox.(Λ .* Ghs, 0; atol=2 * tol)) # complementarity
+    is_complement = isapprox(Ghs' * Λ, 0; atol=2 * tol) # complementarity
     is_primal_feas = all(Ghs .≥ Ghs_l .- tol) && all(Ghs .≤ Ghs_u .+ tol)
 
     is_sol_valid = true
@@ -487,7 +488,12 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     end
     is_primal_feas = all(bop.g(x) .≥ 0 - tol) # primal feas
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
-    is_complement = all(isapprox.(λ .* bop.g(x), 0; atol=2 * tol)) # complementarity
+
+    if bop.m2 > 0
+        is_complement = isapprox(bop.g(x)' * λ, 0; atol=2 * tol)   # complementarity
+    else
+        is_complement = true
+    end
 
     return is_stationary && is_primal_feas && is_dual_feas && is_complement
 end
@@ -517,7 +523,7 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
         init_z_success = status == PATHSolver.MCP_Solved
 
         if init_z_success
-            if verbosity > 0
+            if verbosity > 1
                 print("We couldn't solve the follower NLP to init, but we could MCP solve the KKT... \n")
             end
         end
