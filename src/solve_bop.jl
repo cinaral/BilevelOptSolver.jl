@@ -24,7 +24,7 @@ Verbosity:
 ```
 
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=3)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_init_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=3, fol_feas_set_tol_max=1e-1)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -50,11 +50,10 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     is_norm_dv_full = false
     is_max_iter = false
     is_max_init_restarts = false
-    is_max_restarts = false
+    is_max_fol_relaxes = false
     is_prev_v_set = false
     is_none_BOPi_solved = false
 
-    max_init_restart = 2
 
     x::Vector{Float64} = zeros(nx)
     v = zeros(bop.nv)
@@ -77,13 +76,13 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
     is_Λ_feas_arr = fill(false, n_J_max)
 
-    init_restart_count = -1
-    restart_count = -1
+    init_restart_count = 0
+    restart_count = 0
 
     if isnothing(seed)
         seed = 0
     end
-    fol_feas_set_tol = copy(tol)
+    fol_feas_set_tol = deepcopy(tol)
 
     norm_dv_arr = zeros(norm_dv_len)
     chron_norm_dv_arr = copy(norm_dv_arr)
@@ -108,20 +107,12 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         end
 
         if !is_v_valid
-            is_fol_KKT_ok = is_follower_KKT_satisfied(bop, v)
-            if verbosity > 4
-                print("v isn't valid but follower solution is fine.\n")
-            end
-        end
-
-        if !is_fol_KKT_ok
             if verbosity > 2
                 print("v isn't valid, initializing v\n")
             end
             init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH=is_using_PATH_to_init, tol)
 
-            init_restart_count += 1
-            if init_restart_count >= max_init_restart
+            if init_restart_count >= max_init_restart_count
                 if verbosity > 0
                     print("Reached maximum init attempt, terminating!\n")
                 end
@@ -136,6 +127,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
                 v[bop.v_inds["x"]] .= 10^(init_restart_count) * (0.5 .- rand(MersenneTwister(seed + init_restart_count), bop.n1 + bop.n2))
             end
+            init_restart_count += 1
         end
 
         # By this point, v must at least satisfy the follower's problem
@@ -158,20 +150,26 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if verbosity > 2
                 print("Could not compute follower's feasible sets despite satisfying follower's KKT! Maybe it's a tolerance issue?\n")
             end
-            restart_count += 1
 
-            if restart_count > max_restart_count
-                if verbosity > 1
-                    print("Reached max restarts!\n")
+            restart_count = 1
+
+            while length(follow_feas_Js) < 1
+                if fol_feas_set_tol > fol_feas_set_tol_max
+                    if verbosity > 1
+                        print("Reached max follow set tol relaxations!\n")
+                    end
+                    is_max_fol_relaxes = true
+                    break
                 end
-                is_max_restarts = true
-                break
+
+                fol_feas_set_tol = min(10^(restart_count) * tol, 1e-2)
+
+                if verbosity > 1
+                    print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
+                end
+                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
+                restart_count += 1
             end
-            fol_feas_set_tol = min(10^(restart_count) * fol_feas_set_tol, 1e-1)
-            if verbosity > 1
-                print("Relaxing follower feasible set tolerance to $(round(fol_feas_set_tol, sigdigits=2)) and restarting...\n")
-            end
-            continue
         end
         #else
         #    if verbosity > 0
@@ -211,8 +209,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
             #    #TODO 2025-06-29 jesus 
-            #    Main.@infiltrate
             #    @info "update_v! returns $is_Λ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
+            #    #Main.@infiltrate
             #end
 
             if is_Λ_feas
@@ -271,6 +269,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if verbosity > 1
                 print("v is not valid (could not solve any BOPᵢ)!\n")
             end
+            is_sol_valid = false
             is_none_BOPi_solved = true
             break
         end
@@ -299,7 +298,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
 
             #is_v_Λ_valid_KKT_2 = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
-            ## debug
+            # debug
             #if (is_v_Λ_valid_KKT_2 && !is_v_Λ_valid_KKT) || (!is_v_Λ_valid_KKT_2 && is_v_Λ_valid_KKT)
             #    #TODO 2025-06-29 jesus 
             #    @info "Fugg:DD update_v! returns $is_v_Λ_valid_KKT but check_v_Λ_BOPᵢ_KKT returns $is_v_Λ_valid_KKT_2"
@@ -307,7 +306,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             if !is_v_Λ_valid_KKT
                 if verbosity > 1
-                    print("Could not solve BOPᵢ i=$i so we cannot check for v agreement!\n")
+                    print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
+                    #print("Could not solve BOPᵢ i=$i so we cannot check for v agreement!\n")
                 end
                 is_sol_valid = false
                 break
@@ -330,8 +330,12 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 end
             end
         end
-
+        
+        if !is_sol_valid
+            continue
+        end
         # by this point is_sol_valid=true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
+
         if !is_prev_v_set
             prev_iter_v .= v
             is_prev_v_set = true
@@ -405,7 +409,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         is_sol_valid = false
     end
 
-    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter, is_none_BOPi_solved)
+    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_BOPi_solved)
 
     (; x, status, iter_count)
 end
@@ -417,17 +421,17 @@ Status:
     -4: invalid v: none BOPi could be solved
     -3: invalid v: max iterations
     -2: invalid v: max init restarts
-    -1: invalid v: max restarts
+    -1: invalid v: max follower relaxations
     0: success: valid v, converged
     1: valid v: dv is monoton decreasing
     2: valid v: max iterations
     3: valid v: other
 ```
 """
-function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_restarts, is_max_iter, is_none_BOPi_solved)
+function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_BOPi_solved)
 
     if !is_sol_valid
-        if is_max_restarts
+        if is_max_fol_relaxes
             return -1
         elseif is_max_init_restarts
             return -2
@@ -474,6 +478,7 @@ end
 function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     x = @view v[bop.v_inds["x"]]
     λ = @view v[bop.v_inds["λ"]]
+    #s = @view v[bop.v_inds["s"]]
 
     ∇ₓf = zeros(bop.n1 + bop.n2)
     bop.deriv_funs.∇ₓf!(∇ₓf, x)
@@ -490,11 +495,12 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
 
     if bop.m2 > 0
-        is_complement = isapprox(bop.g(x)' * λ, 0; atol=2 * tol)   # complementarity
+        is_complement = isapprox(bop.g(x)' * λ, 0; atol=10 * tol)   # complementarity
     else
         is_complement = true
     end
 
+    #Main.@infiltrate
     return is_stationary && is_primal_feas && is_dual_feas && is_complement
 end
 
@@ -618,9 +624,9 @@ K[j] =  { j: hⱼ = 0, l < z < u} case 2  : hⱼ active (l ≠ u)
 Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3] and J[4]
 """
 function check_is_sol_valid(bop, v; tol=1e-3)
-    Gh = zeros(bop.m1 + bop.mh)
-    bop.Gh!(Gh, v)
-    h = @view Gh[bop.Ghs_inds["h"]]
+    Ghs = zeros(bop.m1 + bop.mh + bop.m2)
+    bop.Ghs!(Ghs, v)
+    h = @view Ghs[bop.Ghs_inds["h"]]
     z = @view v[bop.v_inds["z"]]
     z_l = bop.z_l₀
     z_u = bop.z_u₀

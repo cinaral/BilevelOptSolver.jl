@@ -20,7 +20,7 @@ struct BilevelOptProb
     Ghs_inds::Dict{String,UnitRange{Int64}}
     Ghs_l₀::Vector{Float64} # default [G; h] bounds 
     Ghs_u₀::Vector{Float64}
-    Gh!::Function # Gh(out, v), out := [G(v); h(v)]
+    Ghs!::Function # Ghs(out, v), out := [G(v); h(v); s]
     solve_BOPᵢ_nlp::Function
     info_BOPᵢ::Function
     eval_BOPᵢ!::Function
@@ -219,7 +219,7 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
     Gh_sym = [G_sym; h_sym]
     solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym)
 
-    Gh! = Symbolics.build_function(Gh_sym, v_sym; expression=Val{false})[2]
+    #Gh! = Symbolics.build_function(Gh_sym, v_sym; expression=Val{false})[2]
     # TODO: used only for verification, this should be optional to save construction time in the future
     (deriv_funs, sym_derivs) = generate_derivatives(n1, n2, m1, m2, x_sym, F_sym, G_sym, f_sym, g_sym)
 
@@ -245,7 +245,7 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
         Ghs_inds,
         Ghs_l₀,
         Ghs_u₀,
-        Gh!,
+        Ghs!,
         solve_BOPᵢ_nlp,
         info_BOPᵢ,
         eval_BOPᵢ!,
