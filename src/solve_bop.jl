@@ -324,7 +324,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
         if length(vΛ_status) == 0
             is_none_J_feas_or_sol = true
-            #Main.@infiltrate
+            is_sol_valid = false
             if verbosity > 1
                 print("Awkward!!\n")
             end

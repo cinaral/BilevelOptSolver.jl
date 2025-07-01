@@ -13,7 +13,7 @@ b = BOLIB.AiyoshiShimizu1984Ex2()
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 elapsed_time = @elapsed begin
-    x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_HSL=true, tol=1e-7,norm_dv_len=10, conv_dv_len=1, is_checking_min=true, is_checking_x_agree=true)
+    x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_HSL=true, tol=1e-7,norm_dv_len=10, conv_dv_len=1, is_checking_min=true, is_checking_x_agree=false)
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
