@@ -217,8 +217,10 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
         end
 
-        if length(vΛ_status) == n_J
+        if length(vΛ_status) == n_J && n_J > 0
             is_all_J_vΛ_feas = true
+        else
+            is_all_J_vΛ_feas = false
         end
 
         if is_all_J_vΛ_feas
@@ -272,7 +274,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 end
             end
 
-            if length(vΛ_status) == n_J
+            is_all_J_vΛ_sol = false
+            if length(vΛ_status) == n_J && n_J > 0
                 if all(vΛ_status .== 0)
                     is_all_J_vΛ_sol = true
                 end
@@ -302,23 +305,9 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
         end
 
-        if is_checking_min
-            if is_all_J_vΛ_sol
-                if is_checking_x_agree
-                    if do_all_x_agree
-                        is_sol_valid = true
-                    end
-                else
-                    is_sol_valid = true
-                end
-            end
-        elseif is_all_J_vΛ_feas
-            is_sol_valid = true
-            # this is a good faith assumption if we don't check for solutions
-        end
-
         if length(vΛ_status) == 0
             is_none_J_feas_or_sol = true
+            #Main.@infiltrate
             if verbosity > 1
                 print("Awkward!!\n")
             end
@@ -341,7 +330,22 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
         end
 
-        #Main.@infiltrate
+        is_sol_valid = false
+        if is_checking_min
+            if is_all_J_vΛ_sol
+                if is_checking_x_agree
+                    if do_all_x_agree
+                        is_sol_valid = true
+                    end
+                else
+                    is_sol_valid = true
+                end
+            end
+        elseif is_all_J_vΛ_feas
+            is_sol_valid = true
+            # this is a good faith assumption if we don't check for solutions
+        end
+
         if !is_sol_valid
             continue
         end
@@ -412,7 +416,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     x .= v[bop.v_inds["x"]]
 
     # final sanity check
-    if is_sol_valid && !(all(bop.G(x) .≥ 0 - tol * 10) && all(bop.g(x) .≥ 0 - tol * 10))# && is_follower_KKT_satisfied(bop, v))
+    if is_sol_valid && !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))# && is_follower_KKT_satisfied(bop, v))
         if verbosity > 0
             print("Something went VERY wrong, this allegedly valid solution is bilevel infeasible!\n")
         end

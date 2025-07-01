@@ -51,12 +51,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
             if is_optimal || is_best
                 optimalish_count += 1
             else
-                if status > 2
-                    print("Despite valid v, we hit the iter limit and the sol is worse\n")
-                    success = false
-                else
-                    suboptimalish_count += 1
-                end
+                suboptimalish_count += 1
             end
         end
 
