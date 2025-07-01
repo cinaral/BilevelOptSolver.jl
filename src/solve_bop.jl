@@ -24,7 +24,7 @@ Verbosity:
 ```
 
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, is_using_HSL=false, seed=0, max_init_restart_count=10, x_agree_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1, fol_feas_set_tol_max=1e-0, is_checking_min=true, is_checking_x_agree=false)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, is_using_HSL=false, seed=0, max_init_restart_count=10, x_agree_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1, fol_feas_set_tol_max=1e-0, is_checking_min=true, is_checking_x_agree=false, max_invalid_sols=10)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -49,8 +49,10 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     is_max_iter = false
     is_max_init_restarts = false
     is_max_tol_restarts = false
+    is_max_invalid_sols = false
     is_prev_v_set = false
     is_none_J_feas_or_sol = false
+    is_very_wrong = false
 
     # buffer
     x::Vector{Float64} = zeros(nx)
@@ -88,6 +90,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
     is_all_J_vΛ_feas = false
     is_all_J_vΛ_sol = false
+    invalid_sol_count = 0
     #prev_J_i_chosen = 0
 
     while !is_converged
@@ -99,6 +102,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             break
         end
         iter_count += 1
+
+        if invalid_sol_count >= max_invalid_sols
+            if verbosity > 0
+                print("We don't seem to be going anywhere!\n")
+            end
+            is_max_invalid_sols = true
+            break
+        end
 
         if verbosity > 1
             print("--Iteration $iter_count\n")
@@ -142,6 +153,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         #    continue
         #end
 
+        #Main.@infiltrate
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
 
         if length(follow_feas_Js) < 1
@@ -273,6 +285,9 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                     if verbosity > 1
                         print("i=$i: UNSOLVED J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
                     end
+                    if !is_checking_x_agree
+                        break # no need to solve further
+                    end
                 end
             end
 
@@ -316,9 +331,12 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             break
         end
 
-        # choose the point the one that leads to lowest cost
-        is_there_one_sol = any(vΛ_status .== 0)
+        # this makes sure next v and Λ are at least feasible, AiyoshiShimizu1984Ex2 happens to converge to optimal with this
+        #v .= v_arr[end]
+        #Λ .= Λ_arr[end]
 
+        # choose the point the one that leads to lowest cost, but this makes or breaks so idk what to do
+        is_there_one_sol = any(vΛ_status .== 0)
         F = Inf
         for (i, stat) in enumerate(vΛ_status)
             #if prev_J_i_chosen == i && n_J > 1
@@ -327,7 +345,6 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if is_there_one_sol && is_checking_min && stat != 0# if checking min ignore the feasible points if there's at least one sol, otherwise choose a feasible point
                 continue
             end
-            #Main.@infiltrate
             F_ = bop.F(v_arr[i][bop.v_inds["x"]])
             if F_ < F
                 F = F_
@@ -335,8 +352,10 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 Λ .= Λ_arr[i]
                 #prev_J_i_chosen = i
             end
+            #break
         end
 
+        #Main.@infiltrate
         is_sol_valid = false
         if is_checking_min
             if is_all_J_vΛ_sol # there's at least a feas solution
@@ -355,7 +374,10 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
         #Main.@infiltrate
         if !is_sol_valid
+            invalid_sol_count += 1
             continue
+        else
+            invalid_sol_count = 0
         end
 
         # by this point is_sol_valid = true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
@@ -428,11 +450,11 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         if verbosity > 0
             print("Something went VERY wrong, this allegedly valid solution is bilevel infeasible!\n")
         end
-        #Main.@infiltrate
+        is_very_wrong = true
         is_sol_valid = false
     end
 
-    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_tol_restarts, is_max_iter, is_none_J_feas_or_sol)
+    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_tol_restarts, is_max_iter, is_none_J_feas_or_sol, is_max_invalid_sols, is_very_wrong)
 
     (; x, status, iter_count)
 end
@@ -440,7 +462,9 @@ end
 """
 ```
 Status:
-    -5: invalid v: other
+    -7: invalid v: other
+    -6: invalid v: something went very wrong
+    -5: invalid v: max invalid sols
     -4: invalid v: none J is neither feasible or solvable
     -3: invalid v: max iterations
     -2: invalid v: max init restarts
@@ -451,7 +475,7 @@ Status:
     3: valid v: other
 ```
 """
-function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_J_feas_or_sol)
+function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_J_feas_or_sol, is_max_invalid_sols, is_very_wrong)
 
     if !is_sol_valid
         if is_max_fol_relaxes
@@ -462,8 +486,12 @@ function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_ini
             return -3
         elseif is_none_J_feas_or_sol
             return -4
-        else
+        elseif is_max_invalid_sols
             return -5
+        elseif is_very_wrong
+            return -6
+        else
+            return -7
         end
     end
 
@@ -606,7 +634,7 @@ function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; i
 
     if is_minimizing
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
-        is_vΛ_valid = solvestat == 0 || solvestat == 1
+        is_vΛ_valid = solvestat == 0 #|| solvestat == 1
     else
         θ_init[bop.θ_inds["v"]] .= v
         θ_init[bop.θ_inds["Λ"]] .= Λ
