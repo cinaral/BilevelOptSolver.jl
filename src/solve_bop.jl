@@ -204,8 +204,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             if is_vΛ_feas
                 push!(vΛ_J_inds, i)
-                push!(v_arr, v)
-                push!(Λ_arr, Λ)
+                push!(v_arr, copy(v))
+                push!(Λ_arr, copy(Λ))
                 push!(vΛ_status, 1) # feasible
                 if verbosity > 2
                     print("i=$i: Feasible J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
@@ -259,8 +259,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                         vΛ_status[vΛ_i] = 0
                     else
                         push!(vΛ_J_inds, i)
-                        push!(v_arr, v)
-                        push!(Λ_arr, Λ)
+                        push!(v_arr, copy(v))
+                        push!(Λ_arr, copy(Λ))
                         push!(vΛ_status, 0)
                     end
 
