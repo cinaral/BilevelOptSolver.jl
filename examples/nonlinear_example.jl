@@ -42,7 +42,7 @@ x_optimal = [−1; −1; 1.1097; 0.3143; −0.8184]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
 
-x, status, iter_count = solve_bop(bop; x_init, is_checking_min=true, verbosity=5)
+x, status, iter_count = solve_bop(bop; x_init, is_checking_min=false, verbosity=5)
 
 Ff = [bop.F(x); bop.f(x)]
 Ff_optimal = [bop.F(x_optimal); bop.f(x_optimal)]

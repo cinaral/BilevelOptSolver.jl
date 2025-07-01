@@ -35,7 +35,7 @@ function g(x)
 end
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-x, is_converged, is_sol_valid, iter_count = solve_bop(bop; x_init, verbosity=2)
+x, status, iter_count = solve_bop(bop; x_init, is_checking_min=true, verbosity=5)
 
 Ff = [bop.F(x); bop.f(x)]
-print("converged = $is_converged, valid = $is_sol_valid, \tx = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5))\n");
+print("status: [$status], $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5))\n");
