@@ -7,7 +7,7 @@ import BOLIB
 
 using DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_checking_x_agree=false, is_using_PATH_to_init=false, tol=1e-6, norm_dv_len=10, conv_dv_len=1, is_checking_min=false)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_checking_x_agree=false, is_using_PATH_to_init=false, tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0

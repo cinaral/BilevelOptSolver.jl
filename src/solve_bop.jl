@@ -24,7 +24,7 @@ Verbosity:
 ```
 
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, is_using_HSL=false, seed=0, max_init_restart_count=10, x_agree_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1, fol_feas_set_tol_max=1e-0, is_checking_min=true, is_checking_x_agree=true)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, is_using_HSL=false, seed=0, max_init_restart_count=10, x_agree_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1, fol_feas_set_tol_max=1e-0, is_checking_min=true, is_checking_x_agree=false)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -88,6 +88,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
     is_all_J_vΛ_feas = false
     is_all_J_vΛ_sol = false
+    #prev_J_i_chosen = 0
 
     while !is_converged
         if iter_count >= max_iter
@@ -170,6 +171,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
         end
 
+        fol_feas_set_tol = deepcopy(tol)
         n_J = length(follow_feas_Js)
 
         if verbosity > 1
@@ -319,20 +321,25 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
         F = Inf
         for (i, stat) in enumerate(vΛ_status)
-            if is_there_one_sol && is_checking_min && stat != 0 # if checking min ignore the feasible points if there's at least one sol, otherwise choose a feasible point
+            #if prev_J_i_chosen == i && n_J > 1
+            #    continue
+            #end
+            if is_there_one_sol && is_checking_min && stat != 0# if checking min ignore the feasible points if there's at least one sol, otherwise choose a feasible point
                 continue
             end
+            #Main.@infiltrate
             F_ = bop.F(v_arr[i][bop.v_inds["x"]])
             if F_ < F
                 F = F_
                 v .= v_arr[i]
                 Λ .= Λ_arr[i]
+                #prev_J_i_chosen = i
             end
         end
 
         is_sol_valid = false
         if is_checking_min
-            if is_all_J_vΛ_sol
+            if is_all_J_vΛ_sol # there's at least a feas solution
                 if is_checking_x_agree
                     if do_all_x_agree
                         is_sol_valid = true
@@ -346,6 +353,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             # this is a good faith assumption if we don't check for solutions
         end
 
+        #Main.@infiltrate
         if !is_sol_valid
             continue
         end
@@ -391,7 +399,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 break
             end
 
-            if verbosity > 4
+            if verbosity > 1
                 print("norm(dv) $norm_dv\n")
             end
 
