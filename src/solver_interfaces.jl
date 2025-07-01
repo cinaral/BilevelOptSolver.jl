@@ -57,7 +57,7 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
     end
 
     # we return this function
-    function solve_nlp(; g_l=g_l, g_u=g_u, x_init=zeros(n), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
+    function solve_nlp(; g_l=g_l, g_u=g_u, x_init=zeros(n), λ_init=zeros(m), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
         ipopt_prob = Ipopt.CreateIpoptProblem(
             n,
             x_l,
@@ -83,6 +83,7 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
         end
 
         ipopt_prob.x .= x_init
+        ipopt_prob.mult_g .= -λ_init # convention change!!
         solvestat = Ipopt.IpoptSolve(ipopt_prob)
 
         x = ipopt_prob.x
@@ -114,6 +115,10 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
     J_col = J_shape.colptr[1:end-1]
     J_len = diff(J_shape.colptr)
     J_row = J_shape.rowval
+
+    if isempty(J_row)
+        J_row = 0
+    end
 
     function eval_F(n, x, vals)
         vals .= 0.0

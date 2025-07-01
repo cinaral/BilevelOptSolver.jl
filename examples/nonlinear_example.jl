@@ -38,11 +38,12 @@ function g(x)
 end
 
 x_init =  [0; 0; 1.1097; 0.3143; −0.8184] # causes a bug
-Ff_optimal = [−1; −1; 1.1097; 0.3143; −0.8184]
+x_optimal = [−1; −1; 1.1097; 0.3143; −0.8184]
 
 bop = construct_bop(n₁, n₂, F, G, f, g);
-x, is_converged, is_sol_valid, iter_count = solve_bop(bop; x_init, verbosity=2)
+
+x, status, iter_count = solve_bop(bop; x_init, is_checking_min=true, verbosity=5)
 
 Ff = [bop.F(x); bop.f(x)]
-print("converged = $is_converged, valid = $is_sol_valid, \tx = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5))\n");
-
+Ff_optimal = [bop.F(x_optimal); bop.f(x_optimal)]
+print("status: [$status], $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_optimal, sigdigits=5)))\n");

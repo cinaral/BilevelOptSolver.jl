@@ -204,17 +204,18 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
         ("v" => 1:nv),
         ("Λ" => nv+1:nv+mΛ),
         ("ΛG" => nv+1:nv+m1), # part of Λ that corresponds to G
-        ("Λh" => nv+m1+1:nv+m1+mh), # part of Λ that corresponds to g
+        ("Λh" => nv+m1+1:nv+m1+mh), # part of Λ that corresponds to h (follower's KKT)
         ("r" => nv+(m1+mh)+1:nv+2*(m1+mh)),
         ("z" => n1+1:n1+mh), # part of v that corresponds to z
         ("rG" => nv+(m1+mh)+1:nv+mΛ+m1), # part of r that corresponds to G
-        ("rh" => nv+(m1+mh)+m1+1:nv+2*(m1+mh)), # part of r that corresponds to g
+        ("rh" => nv+(m1+mh)+m1+1:nv+2*(m1+mh)), # part of r that corresponds to h (follower's KKT)
     ])
     # θ := [v_sym; Λ_sym; r_sym] 
     θ_l₀ = fill(-Inf, nθ)
     θ_u₀ = fill(Inf, nθ)
     θ_l₀[θ_inds["rh"]] .= z_l₀
     θ_u₀[θ_inds["rh"]] .= z_u₀
+    θ_l₀[θ_inds["rG"]] .= 0
 
     Gh_sym = [G_sym; h_sym]
     solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym)

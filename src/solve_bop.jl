@@ -24,7 +24,7 @@ Verbosity:
 ```
 
 """
-function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, n_J_max=20, is_using_HSL=false, seed=0, max_init_restart_count=10, is_check_v_agreem=false, v_agreement_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=3, fol_feas_set_tol_max=1e-0, is_checking_min=false)
+function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, verbosity=0, is_using_HSL=false, seed=0, max_init_restart_count=10, is_checking_x_agree=false, x_agree_tol=1e-3, is_using_PATH_to_init=false, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=1, fol_feas_set_tol_max=1e-0, is_checking_min=true)
 
     if is_using_HSL && !haskey(ENV, "HSL_PATH")
         is_using_HSL = false
@@ -44,27 +44,19 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     iter_count = 0
     is_converged = false
     is_sol_valid = false
-    is_v_valid = false
-    is_fol_KKT_ok = false
     is_dv_mon_decreasing = false
     is_norm_dv_full = false
     is_max_iter = false
     is_max_init_restarts = false
-    is_max_fol_relaxes = false
+    is_max_tol_restarts = false
     is_prev_v_set = false
     is_none_BOPi_solved = false
 
-
+    # buffer
     x::Vector{Float64} = zeros(nx)
     v = zeros(bop.nv)
+    v[bop.v_inds["x"]] .= x_init[1:nx] # initialize
     Λ = zeros(bop.mΛ)
-
-    v_temp = copy(v)
-    v_ref = copy(v)
-    Λ_temp = copy(Λ)
-
-    v[bop.v_inds["x"]] .= x_init[1:nx]
-
     Ghs_l = copy(bop.Ghs_l₀)
     Ghs_u = copy(bop.Ghs_u₀)
     θ_l = copy(bop.θ_l₀)
@@ -72,12 +64,17 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     θ_init = zeros(bop.n_θ)
 
     prev_iter_v = zeros(bop.nv)
-    prev_iter_v .= v
 
-    is_Λ_feas_arr = fill(false, n_J_max)
+    vΛ_J_inds::Vector{Int64} = [] # indexes v and Λ array wrt J
+    v_arr::Vector{Vector{Float64}} = []
+    Λ_arr::Vector{Vector{Float64}} = []
+    vΛ_status::Vector{Int64} = [] # 0 solved, 1 feasible
+    is_vΛ_feas = false
+    is_vΛ_sol = false
+    do_all_x_agree = false
 
     init_restart_count = 0
-    restart_count = 0
+    tol_restart_count = 0
 
     if isnothing(seed)
         seed = 0
@@ -89,7 +86,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     norm_dv_cur_idx = 1
     status = 0
 
-    i_idx_start_counter = 1
+    is_all_J_vΛ_feas = false
+    is_all_J_vΛ_sol = false
 
     while !is_converged
         if iter_count >= max_iter
@@ -101,14 +99,13 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         end
         iter_count += 1
 
-
         if verbosity > 1
             print("--Iteration $iter_count\n")
         end
 
-        if !is_v_valid
+        if !is_vΛ_feas
             if verbosity > 2
-                print("v isn't valid, initializing v\n")
+                print("v isn't feasible, initializing v\n")
             end
             init_z_success = initialize_z!(v, bop; is_using_HSL, verbosity, is_using_PATH=is_using_PATH_to_init, tol)
 
@@ -151,17 +148,17 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 print("Could not compute follower's feasible sets despite satisfying follower's KKT! Maybe it's a tolerance issue?\n")
             end
 
-            restart_count = 1
+            tol_restart_count = 1
 
             while length(follow_feas_Js) < 1
-                fol_feas_set_tol = 10^(restart_count) * tol
+                fol_feas_set_tol = 10^(tol_restart_count) * tol
 
                 if fol_feas_set_tol > fol_feas_set_tol_max
                     if verbosity > 1
                         print("Reached max follow set tol relaxations!\n")
                     end
                     fol_feas_set_tol = fol_feas_set_tol_max
-                    is_max_fol_relaxes = true
+                    is_max_tol_restarts = true
                     break
                 end
 
@@ -169,15 +166,9 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                     print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
                 end
                 follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
-                restart_count += 1
+                tol_restart_count += 1
             end
         end
-        #else
-        #    if verbosity > 0
-        #        print("Despite claimed initialize_z! success, somehow follower's KKT are not satisfied!\n")
-        #    end
-        #    break
-        #end
 
         n_J = length(follow_feas_Js)
 
@@ -187,15 +178,11 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
         end
 
-        # we expect a maximum n_J_max number of manifolds
-        if n_J > n_J_max
-            if verbosity > 0
-                print("Too many feasible sets (max: $(n_J_max)): $(n_J)!\n")
-            end
-            n_J = n_J_max
-        end
 
-        is_Λ_feas_arr .= false
+        empty!(vΛ_J_inds)
+        empty!(v_arr)
+        empty!(Λ_arr)
+        empty!(vΛ_status)
 
         # check if there exists Λ for all i: x ∈ Hᵢ
         # this step could be done in parallel
@@ -203,23 +190,23 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             Ji = follow_feas_Js[i]
             Ji_bounds = convert_J_to_bounds(Ji, bop)
 
-            # does there exist Λ for v? feasibility problem so is_minimizing=false
-            is_Λ_feas = update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
-            # debug
+            ## does there exist Λ for v? feasibility problem so is_minimizing=false
+            is_vΛ_feas = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
+            ## debug
             #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
 
+            ####Main.@infiltrate
             #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
             #    #TODO 2025-06-29 jesus 
             #    @info "update_v! returns $is_Λ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
             #    #Main.@infiltrate
             #end
 
-            if is_Λ_feas
-                # if not checking min satisfying BOPᵢ KKT conditions is considered valid v
-                if !is_checking_min
-                    is_v_valid = true
-                end
-                is_Λ_feas_arr[i] = true
+            if is_vΛ_feas
+                push!(vΛ_J_inds, i)
+                push!(v_arr, v)
+                push!(Λ_arr, Λ)
+                push!(vΛ_status, 1) # feasible
                 if verbosity > 2
                     print("i=$i: Feasible J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
                 end
@@ -230,117 +217,136 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             end
         end
 
-        is_all_Λ_feas = all(is_Λ_feas_arr[1:n_J])
+        if length(vΛ_status) == n_J
+            is_all_J_vΛ_feas = true
+        end
 
-        if is_all_Λ_feas
+        if is_all_J_vΛ_feas
             if verbosity > 4
-                print("All $n_J follower solutions have feasible Λ.\n")
+                print("All $n_J follower solutions have feasible v and Λ.\n")
             end
-            is_sol_valid = true
         end
 
         if is_checking_min
-            # here we compute one solution to update the next iterate
-            is_v_sol = false
-
-            i_idx_start_counter += 1
-            if i_idx_start_counter > n_J
-                i_idx_start_counter = 1
-            end
-
-            for i in 1:n_J
-                idx = (i_idx_start_counter + i - 1) % n_J + 1
-                Ji = follow_feas_Js[idx]
-                Ji_bounds = convert_J_to_bounds(Ji, bop)
-
-                is_v_sol = update_v!(v_temp, Λ_temp, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
-
-                if !is_v_sol
-                    if verbosity > 4
-                        print("Could not solve BOPᵢ i=$i\n")
-                    end
-                    continue
-                end
-                # we just need one solution
-                is_v_valid = true
-                v .= v_temp
-                Λ .= Λ_temp
-                i_idx_start_counter = 1
-                break
-            end
-
-            # by this point all follower solutions have feasible v, Λ
-            # also v should be valid by this point
-            if !is_v_valid
-                if verbosity > 1
-                    print("v is not valid (could not solve any BOPᵢ)!\n")
-                end
-                is_sol_valid = false
-                # TODO: optional
-                is_none_BOPi_solved = true
-                break
-            end
-
-            # now we check if the minimizing solutions are valid . for this we need to find if the solution v is valid on all solutions, or if all solutions agree
             for i in 1:n_J
                 Ji = follow_feas_Js[i]
                 Ji_bounds = convert_J_to_bounds(Ji, bop)
-                #if !is_check_v_agreem
-                #    is_v_Λ_valid_KKT = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
-                #    if is_v_Λ_valid_KKT
-                #        if verbosity > 4
-                #            print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
-                #        end
-                #        is_sol_valid = false
-                #        break
-                #    end
-                #    continue
-                #end
+                # if there exists feasible v, Λ, we initialize with it
+                vΛ_i = findfirst(vΛ_J_inds .== i)
+                if !isnothing(vΛ_i) && vΛ_status[vΛ_i] == 1
+                    v .= v_arr[vΛ_i]
+                    Λ .= Λ_arr[vΛ_i]
+                end
 
-                is_v_Λ_valid_KKT = update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
+                # is there a Λ for v that solves the problem?
+                is_vΛ_sol = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
+                ## debug
+                #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
 
-                update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
-
-                #is_v_Λ_valid_KKT_2 = check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity, tol)
-                # debug
-                #if (is_v_Λ_valid_KKT_2 && !is_v_Λ_valid_KKT) || (!is_v_Λ_valid_KKT_2 && is_v_Λ_valid_KKT)
+                ####Main.@infiltrate
+                #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
                 #    #TODO 2025-06-29 jesus 
-                #    @info "Fugg:DD update_v! returns $is_v_Λ_valid_KKT but check_v_Λ_BOPᵢ_KKT returns $is_v_Λ_valid_KKT_2"
+                #    @info "update_v! returns $is_Λ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
+                #    #Main.@infiltrate
                 #end
 
-                if !is_v_Λ_valid_KKT
-                    if verbosity > 1
-                        print("v and Λ did not satisfy KKT of BOPᵢ i=$i\n")
-                        #print("Could not solve BOPᵢ i=$i so we cannot check for v agreement!\n")
+                if is_vΛ_sol
+                    if !isnothing(vΛ_i)
+                        v_arr[vΛ_i] .= v
+                        Λ_arr[vΛ_i] .= Λ
+                        vΛ_status[vΛ_i] = 0
+                    else
+                        push!(vΛ_J_inds, i)
+                        push!(v_arr, v)
+                        push!(Λ_arr, Λ)
+                        push!(vΛ_status, 0)
                     end
-                    is_sol_valid = false
-                    break
-                end
 
-                if !is_check_v_agreem
-                    continue
-                end
-
-                if i == 1
-                    v_ref = copy(v_temp)
+                    if verbosity > 2
+                        print("i=$i: Solved J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                    end
                 else
-                    norm_x_err = LinearAlgebra.norm(v_temp[bop.v_inds["x"]] - v_ref[bop.v_inds["x"]]) # only checking x error
-                    if (norm_x_err > v_agreement_tol)
-                        if verbosity > 1
-                            print("BOPᵢ solutions disagree! norm x err: $norm_x_err\n")
+                    if verbosity > 1
+                        print("i=$i: UNSOLVED J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                    end
+                end
+            end
+
+            if length(vΛ_status) == n_J
+                if all(vΛ_status .== 0)
+                    is_all_J_vΛ_sol = true
+                end
+            end
+
+            if is_all_J_vΛ_sol
+                if verbosity > 4
+                    print("All $n_J follower solutions solved for v and Λ.\n")
+                end
+            end
+
+            if is_checking_x_agree && is_all_J_vΛ_sol
+                do_all_x_agree = true
+
+                for (i, vv) in enumerate(v_arr)
+                    if i < n_J
+                        norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.v_inds["x"]] - vv[bop.v_inds["x"]]) # only checking x error
+                        if (norm_x_err > x_agree_tol)
+                            if verbosity > 1
+                                print("BOPᵢ solutions disagree! norm x err: $norm_x_err\n")
+                            end
+                            do_all_x_agree = false
+                            break
                         end
-                        is_sol_valid = false
-                        break
                     end
                 end
             end
         end
 
+        if is_checking_min
+            if is_all_J_vΛ_sol
+                if is_checking_x_agree
+                    if do_all_x_agree
+                        is_sol_valid = true
+                    end
+                else
+                    is_sol_valid = true
+                end
+            end
+        elseif is_all_J_vΛ_feas
+            is_sol_valid = true
+            # this is a good faith assumption if we don't check for solutions
+        end
+
+        if length(vΛ_status) == 0
+            is_none_BOPi_solved = true
+            if verbosity > 1
+                print("Awkward!!\n")
+            end
+            break
+        end
+
+        # choose the point the one that leads to lowest cost
+        is_there_one_sol = any(vΛ_status .== 0)
+
+        F = Inf
+        for (i, stat) in enumerate(vΛ_status)
+            if is_there_one_sol && is_checking_min && stat != 0 # if checking min ignore the feasible points if there's at least one sol, otherwise choose a feasible point
+                continue
+            end
+            F_ = bop.F(v_arr[i][bop.v_inds["x"]])
+            if F_ < F
+                F = F_
+                v .= v_arr[i]
+                Λ .= Λ_arr[i]
+            end
+        end
+
+        #Main.@infiltrate
         if !is_sol_valid
             continue
         end
-        # by this point is_sol_valid=true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
 
+        # by this point is_sol_valid = true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
         if !is_prev_v_set
             prev_iter_v .= v
             is_prev_v_set = true
@@ -348,7 +354,6 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             dv = v[bop.v_inds["x"]] - prev_iter_v[bop.v_inds["x"]]
             prev_iter_v .= v
             norm_dv = LinearAlgebra.norm(dv)
-
             norm_dv_arr[norm_dv_cur_idx] = norm_dv
 
             if !is_norm_dv_full && norm_dv_cur_idx == norm_dv_len
@@ -407,14 +412,15 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     x .= v[bop.v_inds["x"]]
 
     # final sanity check
-    if is_sol_valid && !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))# && is_follower_KKT_satisfied(bop, v))
+    if is_sol_valid && !(all(bop.G(x) .≥ 0 - tol * 10) && all(bop.g(x) .≥ 0 - tol * 10))# && is_follower_KKT_satisfied(bop, v))
         if verbosity > 0
             print("Something went VERY wrong, this allegedly valid solution is bilevel infeasible!\n")
         end
+        #Main.@infiltrate
         is_sol_valid = false
     end
 
-    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_BOPi_solved)
+    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_tol_restarts, is_max_iter, is_none_BOPi_solved)
 
     (; x, status, iter_count)
 end
@@ -582,24 +588,25 @@ is_minimizing = false: BOPᵢ KKT is solved as an MCP
 is_minimizing = true: BOPᵢ is solved as an NLP
 is_using_HSL = true: Use HSL LP solver back-end when solving the NLP
 """
-function update_v!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL=false, tol=1e-6)
-    is_v_valid::Bool = false
+function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL=false, tol=1e-6)
+    is_vΛ_valid::Bool = false
     update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
 
     if is_minimizing
-        v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v; is_using_HSL, tol)
-        is_v_valid = solvestat == 0 || solvestat == 1
+        v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
+        is_vΛ_valid = solvestat == 0 || solvestat == 1
     else
         θ_init[bop.θ_inds["v"]] .= v
-        θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol)
+        θ_init[bop.θ_inds["Λ"]] .= Λ
+        θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol, is_silent=true, verbosity=10)
         v_out = θ_out[bop.θ_inds["v"]]
         Λ_out = θ_out[bop.θ_inds["Λ"]]
-        is_v_valid = status == PATHSolver.MCP_Solved
+        is_vΛ_valid = status == PATHSolver.MCP_Solved
     end
 
     v .= v_out # even if it's not solved, we update v so we can try to initialize z again
     Λ .= Λ_out
-    is_v_valid
+    is_vΛ_valid
 end
 
 function update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)

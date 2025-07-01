@@ -7,7 +7,7 @@ import BOLIB
 
 using DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_check_v_agreem=false, is_using_PATH_to_init=false, tol=1e-6, norm_dv_len=10, conv_dv_len=3, is_checking_min=false)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_checking_x_agree=false, is_using_PATH_to_init=false, tol=1e-6, norm_dv_len=10, conv_dv_len=1, is_checking_min=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -41,32 +41,35 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_check_v_agreem, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len, is_checking_min)
+            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_checking_x_agree, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len, is_checking_min)
         end
-
-        if prob_count % 20 == 0
-            print("id name: [status], iters (elapsed s): rating, x -> Ff (Ff*), result\n")
-        end
-        print("$(prob_count+1)\t $prob:\t ")
 
         is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(p, bop, x)
-        print("[$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s),\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
-
-        #status = is_converged && is_sol_valid
-
         success = status ≥ 0
 
         if success
             if is_optimal || is_best
                 optimalish_count += 1
             else
-                suboptimalish_count += 1
                 if status > 2
                     print("Despite valid v, we hit the iter limit and the sol is worse\n")
                     success = false
+                else
+                    suboptimalish_count += 1
                 end
             end
         end
+
+        # print iter info
+        if prob_count % 20 == 0
+            print("id name: [status], iters (elapsed s): rating, x -> Ff (Ff*), result\n")
+        end
+        print("$(prob_count+1)\t $prob:\t ")
+
+        if !success
+            rating = "FAIL"
+        end
+        print("[$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s),\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
 
         if success
             print("SUCCESS\n")
@@ -96,6 +99,13 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
     end
 
     df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Status" => status_arr, "Success" => success_arr, "Rating" => ratings, "Iterations" => iter_counts, "Solve time (s)" => elapsed_arr, "x" => x_out_arr, "Ff" => Ff_out_arr, "x_init" => x_init_arr, "Ff*" => Ff_star_arr)
+
+    success_elapsed_arr = elapsed_arr[res.success_arr]
+
+    print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
+    print("Out of successful solutions: $(optimalish_count) ($(round(optimalish_count/success_count*100,sigdigits=3))%) were optimal or best known, while $(suboptimalish_count) ($(round(suboptimalish_count/success_count*100,sigdigits=3))%) were suboptimal or worse than best known.\n")
+    print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
+    print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
 
     (; prob_count, success_arr, success_count, optimalish_count, suboptimalish_count, ps, bops, x_out_arr, iter_counts, elapsed_arr, status_arr, df)
 end
