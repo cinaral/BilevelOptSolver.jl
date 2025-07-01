@@ -634,7 +634,7 @@ function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; i
 
     if is_minimizing
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
-        is_vΛ_valid = solvestat == 0 #|| solvestat == 1
+        is_vΛ_valid = solvestat == 0 || solvestat == 1
     else
         θ_init[bop.θ_inds["v"]] .= v
         θ_init[bop.θ_inds["Λ"]] .= Λ
