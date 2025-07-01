@@ -100,7 +100,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
 
     df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Status" => status_arr, "Success" => success_arr, "Rating" => ratings, "Iterations" => iter_counts, "Solve time (s)" => elapsed_arr, "x" => x_out_arr, "Ff" => Ff_out_arr, "x_init" => x_init_arr, "Ff*" => Ff_star_arr)
 
-    success_elapsed_arr = elapsed_arr[res.success_arr]
+    success_elapsed_arr = elapsed_arr[success_arr]
 
     print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
     print("Out of successful solutions: $(optimalish_count) ($(round(optimalish_count/success_count*100,sigdigits=3))%) were optimal or best known, while $(suboptimalish_count) ($(round(suboptimalish_count/success_count*100,sigdigits=3))%) were suboptimal or worse than best known.\n")

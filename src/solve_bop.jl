@@ -50,7 +50,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     is_max_init_restarts = false
     is_max_tol_restarts = false
     is_prev_v_set = false
-    is_none_BOPi_solved = false
+    is_none_J_feas_or_sol = false
 
     # buffer
     x::Vector{Float64} = zeros(nx)
@@ -318,7 +318,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         end
 
         if length(vΛ_status) == 0
-            is_none_BOPi_solved = true
+            is_none_J_feas_or_sol = true
             if verbosity > 1
                 print("Awkward!!\n")
             end
@@ -420,7 +420,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         is_sol_valid = false
     end
 
-    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_tol_restarts, is_max_iter, is_none_BOPi_solved)
+    status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_tol_restarts, is_max_iter, is_none_J_feas_or_sol)
 
     (; x, status, iter_count)
 end
@@ -429,7 +429,7 @@ end
 ```
 Status:
     -5: invalid v: other
-    -4: invalid v: none BOPi could be solved
+    -4: invalid v: none J is neither feasible or solvable
     -3: invalid v: max iterations
     -2: invalid v: max init restarts
     -1: invalid v: max follower relaxations
@@ -439,7 +439,7 @@ Status:
     3: valid v: other
 ```
 """
-function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_BOPi_solved)
+function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_J_feas_or_sol)
 
     if !is_sol_valid
         if is_max_fol_relaxes
@@ -448,7 +448,7 @@ function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_ini
             return -2
         elseif is_max_iter
             return -3
-        elseif is_none_BOPi_solved
+        elseif is_none_J_feas_or_sol
             return -4
         else
             return -5
