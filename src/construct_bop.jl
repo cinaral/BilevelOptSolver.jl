@@ -199,16 +199,21 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
     check_Λ_lp_feas = setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds)
 
     # F_path ⟂ θ_l ≤ θ ≤ θ_u
-    nθ = nv + 2 * mΛ
+    mΛ_mcp = m1 + mh
+    Gh_sym = [G_sym; h_sym]
+    @assert(mΛ_mcp == length(Gh_sym))
+
+    nθ = nv + 2 * mΛ_mcp
+
     θ_inds = Dict([ # defined for convenience
         ("v" => 1:nv),
-        ("Λ" => nv+1:nv+mΛ),
+        ("Λ" => nv+1:nv+mΛ_mcp),
+        ("r" => nv+mΛ_mcp+1:nv+2*mΛ_mcp),
         ("ΛG" => nv+1:nv+m1), # part of Λ that corresponds to G
         ("Λh" => nv+m1+1:nv+m1+mh), # part of Λ that corresponds to h (follower's KKT)
-        ("r" => nv+(m1+mh)+1:nv+2*(m1+mh)),
         ("z" => n1+1:n1+mh), # part of v that corresponds to z
-        ("rG" => nv+(m1+mh)+1:nv+mΛ+m1), # part of r that corresponds to G
-        ("rh" => nv+(m1+mh)+m1+1:nv+2*(m1+mh)), # part of r that corresponds to h (follower's KKT)
+        ("rG" => nv+mΛ_mcp+1:nv+mΛ_mcp+m1), # part of r that corresponds to G
+        ("rh" => nv+mΛ_mcp+m1+1:nv+2*mΛ_mcp), # part of r that corresponds to h (follower's KKT)
     ])
     # θ := [v_sym; Λ_sym; r_sym] 
     θ_l₀ = fill(-Inf, nθ)
@@ -217,8 +222,11 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
     θ_u₀[θ_inds["rh"]] .= z_u₀
     θ_l₀[θ_inds["rG"]] .= 0
 
-    Gh_sym = [G_sym; h_sym]
-    solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym)
+    Λ_mcp_sym = Symbolics.@variables(Λ[1:mΛ_mcp])[1] |> Symbolics.scalarize # this Λ ⟂ [G; h]
+    r_mcp_sym = Symbolics.@variables(r[1:mΛ_mcp])[1] |> Symbolics.scalarize # slacks for Gh
+    θ_sym = [v_sym; Λ_mcp_sym; r_mcp_sym]
+
+    solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym, θ_sym, Λ_mcp_sym, r_mcp_sym)
 
     #Gh! = Symbolics.build_function(Gh_sym, v_sym; expression=Val{false})[2]
     # TODO: used only for verification, this should be optional to save construction time in the future
@@ -485,11 +493,7 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
 end
 
 
-function setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym)
-    Λ_sym = Symbolics.@variables(Λ[1:m1+mh])[1] |> Symbolics.scalarize # this Λ ⟂ [G; h]
-    r_sym = Symbolics.@variables(r[1:m1+mh])[1] |> Symbolics.scalarize # slacks for Gh
-    θ_sym = [v_sym; Λ_sym; r_sym]
-
+function setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym, θ_sym, Λ_sym, r_sym)
     L = F_sym - Gh_sym' * Λ_sym
     ∇ᵥL_sym = Symbolics.gradient(L, v_sym)
     Gh_r_sym = Gh_sym .- r_sym

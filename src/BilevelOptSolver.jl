@@ -22,3 +22,7 @@ include("solve_bop.jl")
 
 export construct_bop, solve_bop
 end # module BilevelOptSolver
+
+# TODO 2025-07-04: 
+# add parameters
+# fritz john type

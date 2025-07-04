@@ -345,7 +345,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             if is_there_one_sol && is_checking_min && stat != 0# if checking min ignore the feasible points if there's at least one sol, otherwise choose a feasible point
                 continue
             end
-            F_ = bop.F(v_arr[i][bop.v_inds["x"]])
+            F_ = bop.f(v_arr[i][bop.v_inds["x"]])
             if F_ < F
                 F = F_
                 v .= v_arr[i]
@@ -635,17 +635,22 @@ function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; i
     if is_minimizing
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
         is_vΛ_valid = solvestat == 0 || solvestat == 1
+        if is_vΛ_valid
+            v .= v_out # even if it's not solved, we update v so we can try to initialize z again
+            Λ .= Λ_out
+        end
     else
         θ_init[bop.θ_inds["v"]] .= v
-        θ_init[bop.θ_inds["Λ"]] .= Λ
+        θ_init[bop.θ_inds["Λ"]] .= Λ[1:bop.m1+bop.mh]
         θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol, is_silent=true, verbosity=10)
         v_out = θ_out[bop.θ_inds["v"]]
         Λ_out = θ_out[bop.θ_inds["Λ"]]
         is_vΛ_valid = status == PATHSolver.MCP_Solved
+        if is_vΛ_valid
+            v .= v_out # even if it's not solved, we update v so we can try to initialize z again
+            Λ .= [Λ_out; zeros(bop.m2)]
+        end
     end
-
-    v .= v_out # even if it's not solved, we update v so we can try to initialize z again
-    Λ .= Λ_out
     is_vΛ_valid
 end
 
