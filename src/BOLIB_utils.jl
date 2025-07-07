@@ -44,8 +44,12 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
             x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_checking_x_agree, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len, is_checking_min)
         end
 
-        is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(p, bop, x)
+        is_optimal, is_best, Ff, Ff_star, rating, is_wrong = rate_BOLIB_result(p, bop, x)
         success = status ≥ 0
+
+        if is_wrong
+            success = false
+        end
 
         if success
             if is_optimal || is_best
@@ -93,7 +97,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
         prob_count += 1
     end
 
-    df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Status" => status_arr, "Success" => success_arr, "Rating" => ratings, "Iterations" => iter_counts, "Solve time (s)" => round.(elapsed_arr,sigdigits=3), "x" => map((x)->round.(x,sigdigits=3), x_out_arr), "Ff" => map((Ff)->round.(Ff, sigdigits=3), Ff_out_arr), "x_init" => map((x)->round.(x, sigdigits=3), x_init_arr), "Ff*" => map((Ff)->round.(Ff, sigdigits=3), Ff_star_arr))
+    df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Status" => status_arr, "Success" => success_arr, "Rating" => ratings, "Iterations" => iter_counts, "Solve time (s)" => round.(elapsed_arr, sigdigits=3), "x" => map((x) -> round.(x, sigdigits=3), x_out_arr), "Ff" => map((Ff) -> round.(Ff, sigdigits=3), Ff_out_arr), "x_init" => map((x) -> round.(x, sigdigits=3), x_init_arr), "Ff*" => map((Ff) -> round.(Ff, sigdigits=3), Ff_star_arr))
 
     success_elapsed_arr = elapsed_arr[success_arr]
 
@@ -106,6 +110,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
 end
 
 function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
+    is_wrong = false
     is_optimal = false
     is_best = false
     Ff = [bop.F(x); bop.f(x)]
@@ -124,7 +129,7 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
                 rating = "optimal F but f is worse"
             end
         elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
-            is_optimal = true
+            is_wrong = true
             rating = "better than optimal?!"
         else
             rating = "SUBOPTIMAL Ff"
@@ -149,5 +154,5 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
     else
         rating = "no reference solution"
     end
-    is_optimal, is_best, Ff, Ff_star, rating
+    is_optimal, is_best, Ff, Ff_star, rating, is_wrong
 end

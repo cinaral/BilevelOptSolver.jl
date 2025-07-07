@@ -11,12 +11,35 @@ using ProfileView
 # Quadratic-quadratic Bard1988Ex1, Bard1988Ex2, Bard1988Ex3, Dempe92
 # doesn't compile SinhaMaloDeb2014TP9, SinhaMaloDeb2014TP10
 # better than optimal AiyoshiShimizu1984Ex2, FalkLiu1995, Mirrlees1999, MitsosBarton2006Ex312, MitsosBarton2006Ex314, MitsosBarton2006Ex315, MitsosBarton2006Ex317, MitsosBarton2006Ex320, PaulaviciusAdjiman2017a, YeZhu2010Ex43, MitsosBarton2006Ex34, MitsosBarton2006Ex35
-b = BOLIB.ShimizuAiyoshi1981Ex2()
+"""
+better with minimizing: 
+LamparielloSagratella2017Ex23 (L-L-N-L) (convex)
+GumusFloudas2001Ex1 (N-L-N-L) 
+ShimizuEtal1997b (N-L-N-L) 
+FrankeEtal2018Ex521 (L-O-L-N) 
+Zlobec2001b (no solution but without minimizing we claim there's a local sol) (L-L-O-L-L-N) 
+
+better without minimizing: 
+MitsosBarton2006Ex325 (N-N-N-N) 
+Outrata1990Ex1c (N-O-N-L) 
+AnEtal2009 (N-L-N-L) (convex)
+CalamaiVicente1994a (N-O-N-L) 
+Dempe1992b (N-O-N-N) (convex)
+DempeDutta2012Ex24 (N-O-N-N) 
+DempeLohse2011Ex31b (N-O-N-L) 
+LamparielloSagratella2017Ex35 (N-L-L-L) 
+MitsosBarton2006Ex312 (N-L-N-L) 
+NieWangYe2017Ex34 (L-L-N-N) 
+FrankeEtal2018Ex513 (L-O-L-N) 
+and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
+"""
+# interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, 
+b = BOLIB.ShimizuEtal1997b()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 #bop = construct_bop(b.n2, b.n1, b.f, b.g, b.F, b.G, verbosity=0)
 
-x_optimal = [1; 0.957]
+#x_optimal = [1; 0.957]
 elapsed_time = @elapsed begin
     x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_HSL=true, tol=1e-7,norm_dv_len=10, conv_dv_len=2, is_checking_min=true, is_checking_x_agree=false)
 end
