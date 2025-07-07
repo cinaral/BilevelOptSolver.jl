@@ -5,15 +5,20 @@ using BenchmarkTools
 using ProfileView
 # Change this to any BOLIB example, e.g.: AllendeStill2013, AnEtal2009, Bard1988Ex2, LamparielloSagratella2017Ex23, Zlobec2001b, AiyoshiShimizu1984Ex2, Colson2002BIPA1
 
+# Dimensions 𝑛𝑥, 𝑛𝑦, 𝑛𝐺 or 𝑛𝑔 of examples RobustPortfolioP1, RobustPortfolioP2 can be altered to get problems of different sizes, as necessary
+
+# Zlobec2001b and MitsosBartonEx32 have no optimal solutions
 # Quadratic-quadratic Bard1988Ex1, Bard1988Ex2, Bard1988Ex3, Dempe92
 # doesn't compile SinhaMaloDeb2014TP9, SinhaMaloDeb2014TP10
 # better than optimal AiyoshiShimizu1984Ex2, FalkLiu1995, Mirrlees1999, MitsosBarton2006Ex312, MitsosBarton2006Ex314, MitsosBarton2006Ex315, MitsosBarton2006Ex317, MitsosBarton2006Ex320, PaulaviciusAdjiman2017a, YeZhu2010Ex43, MitsosBarton2006Ex34, MitsosBarton2006Ex35
-b = BOLIB.AiyoshiShimizu1984Ex2()
+b = BOLIB.ShimizuAiyoshi1981Ex2()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
+#bop = construct_bop(b.n2, b.n1, b.f, b.g, b.F, b.G, verbosity=0)
 
+x_optimal = [1; 0.957]
 elapsed_time = @elapsed begin
-    x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_HSL=true, tol=1e-7,norm_dv_len=10, conv_dv_len=1, is_checking_min=true, is_checking_x_agree=false)
+    x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, is_using_HSL=true, tol=1e-7,norm_dv_len=10, conv_dv_len=2, is_checking_min=true, is_checking_x_agree=false)
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
@@ -24,7 +29,10 @@ print("status: [$status], $iter_count iters ($(round(elapsed_time, sigdigits=5))
 #OP1 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n1, b.F, b.G, zeros(bop.m1), fill(Inf, bop.m1))
 #OP2 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n2, b.f, b.g, zeros(bop.m2), fill(Inf, bop.m2))
 #bilevel = [OP1; OP2]
-#out = forrest_solver.solve(bilevel)
+#out_bilevel = forrest_solver.solve(bilevel)
 #x_forrest = out[1:b.n1+b.n2]
 #@info x_forrest 
 #@info bop.F(x_forrest)
+
+#nash = [OP1 OP2]
+#out_nash = forrest_solver.solve(nash)

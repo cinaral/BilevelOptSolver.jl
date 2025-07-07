@@ -119,6 +119,7 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
     mh = n2 + m2 + m2 # length(h)
     x1_sym = Symbolics.@variables(x1[1:n1])[1] |> Symbolics.scalarize
     x2_sym = Symbolics.@variables(x2[1:n2])[1] |> Symbolics.scalarize
+    #λ0_sym = Symbolics.@variables(lamb0[1])[1] |> Symbolics.scalarize
     λ_sym = Symbolics.@variables(lamb[1:m2])[1] |> Symbolics.scalarize
     s_sym = Symbolics.@variables(s[1:m2])[1] |> Symbolics.scalarize
     z_sym = [x2_sym; λ_sym; s_sym] # z = [x₂; λ; s] ∈ R⁽ᵐʰ⁾

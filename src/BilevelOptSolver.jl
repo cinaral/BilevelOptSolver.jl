@@ -26,3 +26,4 @@ end # module BilevelOptSolver
 # TODO 2025-07-04: 
 # add parameters
 # fritz john type
+# verify stationary point for BOP_i
