@@ -33,8 +33,8 @@ NieWangYe2017Ex34 (L-L-N-N)
 FrankeEtal2018Ex513 (L-O-L-N) 
 and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
 """
-# interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, 
-b = BOLIB.MitsosBarton2006Ex315()
+# interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, Mirrlees1999 
+b = BOLIB.Mirrlees1999()
 
 bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 #bop = construct_bop(b.n2, b.n1, b.f, b.g, b.F, b.G, verbosity=0)

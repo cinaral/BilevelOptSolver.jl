@@ -208,10 +208,11 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
             ## does there exist Λ for v? feasibility problem so is_minimizing=false
             is_vΛ_feas = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
-            ## debug
-            #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
-
-            #####Main.@infiltrate
+            # debug
+            #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
+     
+            ##check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u)
+            ######Main.@infiltrate
             #if (is_vΛ_feas && !is_Λ_feas_2) || (!is_vΛ_feas && is_Λ_feas_2)
             #    #TODO 2025-06-29 jesus 
             #    @info "update_v! returns $is_vΛ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
@@ -258,17 +259,25 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
 
                 # is there a Λ for v that solves the problem?
                 is_vΛ_sol = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
-                ## debug
-                #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
+                #Main.@infiltrate
+               
+                # debug
+                #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
 
-                ####Main.@infiltrate
-                #if (is_Λ_feas && !is_Λ_feas_2) || (!is_Λ_feas && is_Λ_feas_2)
+                #####Main.@infiltrate
+                #if (is_vΛ_sol && !is_Λ_feas_2) || (!is_vΛ_sol && is_Λ_feas_2)
                 #    #TODO 2025-06-29 jesus 
-                #    @info "update_v! returns $is_Λ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
+                #    @info "update_v!min returns $is_vΛ_sol but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
                 #    #Main.@infiltrate
                 #end
 
                 if is_vΛ_sol
+                    #if !check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u)
+                    #    Main.@infiltrate
+                    #    @info "woah there"
+                    #end
+
+                    is_vΛ_feas = is_vΛ_sol
                     if !isnothing(vΛ_i)
                         v_arr[vΛ_i] .= v
                         Λ_arr[vΛ_i] .= Λ
@@ -536,7 +545,7 @@ function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_ini
 
 end
 
-function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-6)
+function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-5,is_infiltrating=false)
     ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_shape, ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_shape = bop.info_BOPᵢ()
     Ghs = zeros(bop.mΛ)
     ∇ᵥF = zeros(bop.nv)
@@ -549,6 +558,9 @@ function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-6)
     is_primal_feas = all(Ghs .≥ Ghs_l .- tol) && all(Ghs .≤ Ghs_u .+ tol)
 
     is_sol_valid = true
+    if is_infiltrating
+        Main.@infiltrate
+    end
     if !(is_stationary && is_complement && is_primal_feas)
         is_sol_valid = false
     end
@@ -665,7 +677,7 @@ function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; i
 
     if is_minimizing
         v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
-        is_vΛ_valid = solvestat == 0 || solvestat == 1
+        is_vΛ_valid = solvestat == 0 #|| solvestat == 1
         if is_vΛ_valid
             v .= v_out # even if it's not solved, we update v so we can try to initialize z again
             Λ .= Λ_out

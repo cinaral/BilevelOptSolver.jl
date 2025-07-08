@@ -197,7 +197,7 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
 
     solve_BOPᵢ_nlp, info_BOPᵢ, eval_BOPᵢ!, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape = setup_BOPᵢ_nlp(nv, mΛ, Ghs_l₀, Ghs_u₀, v_sym, F_sym, Ghs_sym)
 
-    check_Λ_lp_feas = setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds)
+    check_Λ_lp_feas = setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds, z_inds)
 
     # F_path ⟂ θ_l ≤ θ ≤ θ_u
     mΛ_mcp = m1 + mh
@@ -470,10 +470,10 @@ KKT conditions for BOPᵢ is practically an LP feasibility problem when v is giv
 ```
 
 """
-function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds; tol=1e-6)
+function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds, z_inds; tol=1e-6)
     check_feas = setup_lp_feas_check_HiGHS(mΛ)
 
-    function check_Λ_lp_feas(v, z_l, z_u)
+    function check_Λ_lp_feas(v, z_l, z_u, h_l, h_u)
         Ghs = zeros(mΛ)
         Ghs!(Ghs, v)
         ∇ᵥF = zeros(nv)
@@ -482,17 +482,21 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
         ∇ᵥGhs_vals!(∇ᵥGhs.nzval, v)
 
         # this part ensures dual feasibility
-        Λ_l = fill(0.0, mΛ)
+        Λ_l = fill(0., mΛ)
         Λ_u = fill(Inf, mΛ)
-        Λ_l[Ghs_inds["h"]] .= z_l
+        # Λₕ=z is complement to h, s is complement to λ
+        Λ_l[Ghs_inds["h"]] .= z_l 
         Λ_u[Ghs_inds["h"]] .= z_u
-
+        Λ_l[Ghs_inds["s"]] .= z_l[z_inds["s"]]
+        Λ_u[Ghs_inds["s"]] .= z_u[z_inds["s"]]
+# Main.@infiltrate
         # constraint matrix is column-wise, this part checks :
         # ∇ᵥF - Λ' * ∇ᵥGhs = 0 (stationarity)
         # Λ' * Ghs = 0 (complementarity)
-        A_l = ∇ᵥF
-        A_u = ∇ᵥF
-        A = [∇ᵥGhs';]
+        A_l = [∇ᵥF; 0;]
+        A_u = [∇ᵥF; 0;]
+        A = [∇ᵥGhs'; Ghs';] # violates constraint qualifications like this
+        #Main.@infiltrate
 
         check_feas(Λ_l, Λ_u, A_l, A_u, A)
     end

@@ -202,14 +202,15 @@ a_index = [1, 2, 0, 1, 2]
 a_value = [1.0, 3.0, 1.0, 2.0, 2.0]
 ```
 """
-function setup_lp_feas_check_HiGHS(n; primal_feas_tol=1e-6, zero_tol=1e-3, verbosity=0)
+function setup_lp_feas_check_HiGHS(n; primal_feas_tol=1e-6, zero_tol=1e-3, output_flag=false, verbosity=0)
     c = zeros(n)
     offset = 0.0
 
     model = HiGHS.Highs_create()
     HiGHS.Highs_setDoubleOptionValue(model, "primal_feasibility_tolerance",
         primal_feas_tol)
-    HiGHS.Highs_setBoolOptionValue(model, "output_flag", verbosity)
+    HiGHS.Highs_setBoolOptionValue(model, "output_flag", output_flag)
+    #HiGHS.Highs_setBoolOptionValue(model, "log_to_console", true)
 
     function check_feas(x_l, x_u, A_l, A_u, A)
         # constraint matrix is column-wise:

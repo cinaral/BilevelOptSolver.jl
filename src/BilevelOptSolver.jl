@@ -25,5 +25,9 @@ end # module BilevelOptSolver
 
 # TODO 2025-07-04: 
 # add parameters
-# fritz john type
 # verify stationary point for BOP_i
+
+# TODO: 2025-07-08:
+# correct check for low level
+# check min -x² in ipopt
+# 
