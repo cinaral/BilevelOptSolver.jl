@@ -170,7 +170,7 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
     g_u = fill(Inf, m2)
     solve_follower_nlp = setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
     solve_follower_KKT_mcp = setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
-    find_bilevel_feas_pt = setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, G_sym, g_sym)
+    find_bilevel_feas_pt = setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, F_sym, G_sym, g_sym)
 
     mΛ = m1 + mh + m2 # length([G; h; s])
     Ghs_inds = Dict([ # defined for convenience
@@ -358,17 +358,18 @@ function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym
     (PJ_rows, PJ_cols, PJ_vals_sym) = SparseArrays.findnz(PJ_sym)
     PJ_vals! = Symbolics.build_function(PJ_vals_sym, x1_z_sym; expression=Val{false})[2]
 
-    function solve_follower_KKT_mcp(x₁; z_init=zeros(n_z), tol=1e-6, max_iter=1000, is_silent=true)
+    function solve_follower_KKT_mcp(x1; z_init=zeros(n_z), tol=1e-6, max_iter=1000, is_silent=true)
         x1_z = zeros(length(x1_z_sym))
-        x1_z[1:n1] .= x₁
+        x1_z[1:n1] .= x1
+        z_inds = n1+1:n1+n2+2*m2
 
         function eval_PF!(F, z::Vector{Float64})
-            x1_z[n1+1:end] .= z
+            x1_z[z_inds] .= z
             PF!(F, x1_z)
         end
 
         function eval_PJ_vals!(J_vals, z::Vector{Float64})
-            x1_z[n1+1:end] .= z
+            x1_z[z_inds] .= z
             PJ_vals!(J_vals, x1_z)
         end
 
@@ -377,22 +378,26 @@ function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym
     end
 end
 
-function setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, G_sym, g_sym)
+function setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, F_sym, G_sym, g_sym)
     x_l = fill(-Inf, n1 + n2)
     x_u = fill(Inf, n1 + n2)
     Gg_l = fill(0.0, m1 + m2)
     Gg_u = fill(Inf, m1 + m2)
 
-    function f_zero(x::Vector{Float64})
-        0.0
-    end
+    F = Symbolics.build_function(F_sym, x_sym; expression=Val{false})
+
+    ∇ₓF_sym = Symbolics.gradient(F_sym, x_sym)
+    ∇ₓF = Symbolics.build_function(∇ₓF_sym, x_sym; expression=Val{false})[2]
+    #function f_zero(x::Vector{Float64})
+    #    F(x)
+    #end
 
     Gg_sym = [G_sym; g_sym]
     Gg! = Symbolics.build_function(Gg_sym, x_sym; expression=Val{false})[2]
 
-    function ∇ₓf_zero(∇ₓf::Vector{Float64}, x::Vector{Float64})
-        ∇ₓf .= 0.0
-    end
+    #function ∇ₓf_zero(∇ₓf::Vector{Float64}, x::Vector{Float64})
+    #    ∇ₓf .= 0.0
+    #end
 
     ∇ₓGg_sym = Symbolics.sparsejacobian(Gg_sym, x_sym)
     (∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals) = SparseArrays.findnz(∇ₓGg_sym)
@@ -410,7 +415,7 @@ function setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, G_sym, g_sym)
     (∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals_sym) = SparseArrays.findnz(∇ₓₓL)
     ∇ₓₓL_feas_vals! = Symbolics.build_function(∇ₓₓL_vals_sym, x_sym, Λ_sym; expression=Val{false})[2]
 
-    setup_nlp_solve_IPOPT(n1 + n2, m1 + m2, x_l, x_u, Gg_l, Gg_u, f_zero, Gg!, ∇ₓf_zero, ∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_feas_vals!)
+    setup_nlp_solve_IPOPT(n1 + n2, m1 + m2, x_l, x_u, Gg_l, Gg_u, F, Gg!, ∇ₓF, ∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_feas_vals!)
 end
 
 function setup_BOPᵢ_nlp(nv, mΛ, Ghs_l₀, Ghs_u₀, v_sym, F_sym, Ghs_sym)

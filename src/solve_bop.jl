@@ -210,14 +210,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             is_vΛ_feas = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
             ## debug
             #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u)
-            
+
             #####Main.@infiltrate
             #if (is_vΛ_feas && !is_Λ_feas_2) || (!is_vΛ_feas && is_Λ_feas_2)
             #    #TODO 2025-06-29 jesus 
             #    @info "update_v! returns $is_vΛ_feas but bop.check_Λ_lp_feas returns $is_Λ_feas_2"
             #    #Main.@infiltrate
             #end
-  
+
             if is_vΛ_feas
                 push!(vΛ_J_inds, i)
                 push!(v_arr, copy(v))
@@ -340,18 +340,18 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         # choose the point the one that leads to lowest cost, but this makes or breaks so idk what to do
         is_there_one_sol = any(vΛ_status .== 0)
         F = Inf
-        n_Js = map(v->length(compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)), v_arr)
-        Fs = map(v->bop.F(v[bop.v_inds["x"]]), v_arr)
-        fs = map(v->bop.f(v[bop.v_inds["x"]]), v_arr)
-        Gs = mapreduce(v->bop.G(v[bop.v_inds["x"]])', vcat, v_arr)
-        gs = mapreduce(v->bop.g(v[bop.v_inds["x"]])', vcat, v_arr)
-        max_n_J = maximum(n_Js)
+        #n_Js = map(v -> length(compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)), v_arr)
+        #Fs = map(v -> bop.F(v[bop.v_inds["x"]]), v_arr)
+        #fs = map(v -> bop.f(v[bop.v_inds["x"]]), v_arr)
+        #Gs = mapreduce(v -> bop.G(v[bop.v_inds["x"]])', vcat, v_arr)
+        #gs = mapreduce(v -> bop.g(v[bop.v_inds["x"]])', vcat, v_arr)
+        #max_n_J = maximum(n_Js)
 
         #fs_sorted_inds = sortperm(fs)
 
         #@info "$n_Js $Fs $fs"
         #Main.@infiltrate
-        
+
         #Main.@infiltrate
         for (i, stat) in enumerate(vΛ_status)
             #if prev_J_i_chosen == i && n_J > 1
@@ -365,14 +365,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             #   continue
             #end
 
-            if !all(Gs[i, :] .≥ 0 - tol) || !all(gs[i, :] .≥ 0 - tol)
-                @info "this one isn't it chief"
-                continue
-            end
+            #if !all(Gs[i, :] .≥ 0 - tol) || !all(gs[i, :] .≥ 0 - tol)
+            #    @info "this one isn't it chief"
+            #    continue
+            #end
 
             # choose the smallest available f value
             F_ = bop.F(v_arr[i][bop.v_inds["x"]])
-    
+
             #n_J_ = length(compute_follow_feas_ind_sets(bop, v_arr[i]; tol=fol_feas_set_tol))
 
             if F_ < F
@@ -619,28 +619,30 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
         if verbosity > 1
             print("Resetting x to a bilevel feasible point. \n")
         end
+    init_z_success = false
 
-        x_feas, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2]; tol)
-        bilevel_feas_success = solvestat == 0 || solvestat == 1
+    x_feas, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2]; tol)
+    bilevel_feas_success = solvestat == 0 || solvestat == 1
 
-        if bilevel_feas_success
-            x1 .= x_feas[bop.v_inds["x1"]]
-            x2 .= x_feas[bop.v_inds["x2"]]
+    if bilevel_feas_success
+        x1 .= x_feas[bop.v_inds["x1"]]
+        x2 .= x_feas[bop.v_inds["x2"]]
 
-            if is_using_PATH
-                θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; tol)
-                x2 = θ_out[1:bop.n2]
-                init_z_success = status == PATHSolver.MCP_Solved
-            else
-                x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol)
-                init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
-            end
+        if is_using_PATH
+            θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; z_init=[x2; zeros(2 * bop.m2)], tol)
+            x2 .= θ_out[1:bop.n2]
+            init_z_success = status == PATHSolver.MCP_Solved
         else
-            if verbosity > 0
-                print("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
-            end
+            x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol)
+            init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+        end
+    else
+        if verbosity > 0
+            print("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
         end
     end
+    end
+    #Main.@infiltrate
 
     if init_z_success
         v[bop.v_inds["x1"]] .= x1
