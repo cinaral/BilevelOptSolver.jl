@@ -32,6 +32,10 @@ struct BilevelOptProb
     solve_BOPᵢ_KKT_mcp::Function
     deriv_funs
     sym_derivs
+    ∇ₓ₂ₓ₂L_rows
+    ∇ₓ₂ₓ₂L_cols
+    ∇ₓ₂ₓ₂L
+    ∇ₓ₂ₓ₂L_vals!
 end
 
 """
@@ -168,7 +172,7 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
 
     g_l = fill(0.0, m2)
     g_u = fill(Inf, m2)
-    solve_follower_nlp = setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
+    solve_follower_nlp, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L, ∇ₓ₂ₓ₂L_vals! = setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
     solve_follower_KKT_mcp = setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
     find_bilevel_feas_pt = setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, F_sym, G_sym, g_sym)
 
@@ -266,7 +270,11 @@ function construct_bop(n1, n2, F, G, f, g; verbosity=0)
         θ_u₀,
         solve_BOPᵢ_KKT_mcp,
         deriv_funs,
-        sym_derivs
+        sym_derivs,
+        ∇ₓ₂ₓ₂L_rows, 
+        ∇ₓ₂ₓ₂L_cols, 
+        ∇ₓ₂ₓ₂L, 
+        ∇ₓ₂ₓ₂L_vals!
     )
 end
 
@@ -329,6 +337,8 @@ function setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, 
         solve = setup_nlp_solve_IPOPT(n2, m2, x2_l, x2_u, g_l, g_u, eval_f, eval_g, eval_∇ₓ₂f, ∇ₓ₂g_rows, ∇ₓ₂g_cols, eval_∇ₓ₂g_vals, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, eval_∇ₓ₂ₓ₂L_vals)
         solve(; x_init=x2_init, tol, max_iter, print_level, is_using_HSL)
     end
+
+    (; solve_follower_nlp, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L, ∇ₓ₂ₓ₂L_vals!)
 end
 
 

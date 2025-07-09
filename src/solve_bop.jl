@@ -210,7 +210,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             is_vΛ_feas = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL, tol)
             # debug
             #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
-     
+
             ##check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u)
             ######Main.@infiltrate
             #if (is_vΛ_feas && !is_Λ_feas_2) || (!is_vΛ_feas && is_Λ_feas_2)
@@ -220,12 +220,14 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
             #end
 
             if is_vΛ_feas
-                push!(vΛ_J_inds, i)
-                push!(v_arr, copy(v))
-                push!(Λ_arr, copy(Λ))
-                push!(vΛ_status, 1) # feasible
-                if verbosity > 2
-                    print("i=$i: Feasible J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                if is_follower_minimized(bop, v, Ji)
+                    push!(vΛ_J_inds, i)
+                    push!(v_arr, copy(v))
+                    push!(Λ_arr, copy(Λ))
+                    push!(vΛ_status, 1) # feasible
+                    if verbosity > 2
+                        print("i=$i: Feasible J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                    end
                 end
             else
                 if verbosity > 1
@@ -260,7 +262,7 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
                 # is there a Λ for v that solves the problem?
                 is_vΛ_sol = update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=true, is_using_HSL, tol)
                 #Main.@infiltrate
-               
+
                 # debug
                 #is_Λ_feas_2 = bop.check_Λ_lp_feas(v, Ji_bounds.z_l, Ji_bounds.z_u, Ji_bounds.h_l, Ji_bounds.h_u)
 
@@ -545,7 +547,7 @@ function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_ini
 
 end
 
-function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-5,is_infiltrating=false)
+function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-5, is_infiltrating=false)
     ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_shape, ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_shape = bop.info_BOPᵢ()
     Ghs = zeros(bop.mΛ)
     ∇ᵥF = zeros(bop.nv)
@@ -559,7 +561,7 @@ function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-5,i
 
     is_sol_valid = true
     if is_infiltrating
-        Main.@infiltrate
+        #Main.@infiltrate
     end
     if !(is_stationary && is_complement && is_primal_feas)
         is_sol_valid = false
@@ -567,7 +569,7 @@ function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-5,i
     is_sol_valid
 end
 
-function is_follower_KKT_satisfied(bop, v; tol=1e-6)
+function is_follower_minimized(bop, v, Ji; tol=1e-6)
     x = @view v[bop.v_inds["x"]]
     λ = @view v[bop.v_inds["λ"]]
     #s = @view v[bop.v_inds["s"]]
@@ -592,8 +594,36 @@ function is_follower_KKT_satisfied(bop, v; tol=1e-6)
         is_complement = true
     end
 
+    ∇ₓ₂ₓ₂L_shape = size(bop.∇ₓ₂ₓ₂L)
+    ∇ₓ₂ₓ₂L = sparse(bop.∇ₓ₂ₓ₂L_rows, bop.∇ₓ₂ₓ₂L_cols, zeros(length(bop.∇ₓ₂ₓ₂L_rows)), ∇ₓ₂ₓ₂L_shape[1], ∇ₓ₂ₓ₂L_shape[2])
+    bop.∇ₓ₂ₓ₂L_vals!(∇ₓ₂ₓ₂L, x, 1.0, λ)
+
+    # tangent cone
+    act_inds = isapprox.(bop.g(x), 0; atol=2 * tol)
+    ∇ₓ₂g = ∇ₓg[:, x2_inds]
+
+    y = ones(bop.n2)
+
+    for i in 1:bop.m2
+        if act_inds[i] && ∇ₓ₂g[i] ≥ 0 - tol
+            y[i] = 0.0
+        end
+    end
+
+    is_minimum = isposdef(y' * ∇ₓ₂ₓ₂L * y)
+
     #Main.@infiltrate
-    return is_stationary && is_primal_feas && is_dual_feas && is_complement
+    #∇ₓₓf_shape = size(bop.sym_derivs.∇ₓₓf)
+    #
+    #bop.deriv_funs.∇ₓₓf_vals!(∇ₓₓf, x)
+
+    #∇ₓₓg_shape = size(bop.sym_derivs.∇ₓₓg)
+    #∇ₓₓg = sparse(bop.deriv_funs.∇ₓₓg_rows, bop.deriv_funs.∇ₓₓg_cols, zeros(length(bop.deriv_funs.∇ₓₓg_rows)), ∇ₓₓg_shape[1], ∇ₓₓg_shape[2])
+    #bop.deriv_funs.∇ₓₓg_vals!(∇ₓₓg, x)
+
+    #∇ₓₓL = 
+    @info "x2 $(x[x2_inds]) λ $λ SC $is_stationary PF $is_primal_feas DF $is_dual_feas CC $is_complement MIN $is_minimum"
+    return is_stationary && is_primal_feas && is_dual_feas && is_complement && is_minimum
 end
 
 function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=false, tol=1e-6)
@@ -631,28 +661,28 @@ function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=fa
         if verbosity > 1
             print("Resetting x to a bilevel feasible point. \n")
         end
-    init_z_success = false
+        init_z_success = false
 
-    x_feas, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2]; tol)
-    bilevel_feas_success = solvestat == 0 || solvestat == 1
+        x_feas, _, solvestat, _ = bop.find_bilevel_feas_pt(x_init=[x1; x2]; tol)
+        bilevel_feas_success = solvestat == 0 || solvestat == 1
 
-    if bilevel_feas_success
-        x1 .= x_feas[bop.v_inds["x1"]]
-        x2 .= x_feas[bop.v_inds["x2"]]
+        if bilevel_feas_success
+            x1 .= x_feas[bop.v_inds["x1"]]
+            x2 .= x_feas[bop.v_inds["x2"]]
 
-        if is_using_PATH
-            θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; z_init=[x2; zeros(2 * bop.m2)], tol)
-            x2 .= θ_out[1:bop.n2]
-            init_z_success = status == PATHSolver.MCP_Solved
+            if is_using_PATH
+                θ_out, status, _ = bop.solve_follower_KKT_mcp(x1; z_init=[x2; zeros(2 * bop.m2)], tol)
+                x2 .= θ_out[1:bop.n2]
+                init_z_success = status == PATHSolver.MCP_Solved
+            else
+                x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol)
+                init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+            end
         else
-            x2, λ, solvestat, _ = bop.solve_follower_nlp(x1; x2_init=x2, is_using_HSL, tol)
-            init_z_success = solvestat == 0 || solvestat == 1 # accept Solve_Succeeded and Solved_To_Acceptable_Level
+            if verbosity > 0
+                print("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
+            end
         end
-    else
-        if verbosity > 0
-            print("Failed to find a bilevel feasible point to re-attempt, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
-        end
-    end
     end
     #Main.@infiltrate
 
