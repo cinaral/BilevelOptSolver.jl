@@ -35,7 +35,7 @@ struct BilevelOptProb
     ∇h_rows::Vector{Int}
     ∇h_cols::Vector{Int}
     ∇h_vals!::Function # ∇h_vals!(out, v)
-    # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
+    # SBOPi NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
     Fv::Function # F(v)
     Γ!::Function # Γ!(out, v)
     ∇ᵥF!::Function # Γ!(out, v) 
@@ -49,7 +49,7 @@ struct BilevelOptProb
     ∇²ᵥL₁_rows::Vector{Int}
     ∇²ᵥL₁_cols::Vector{Int}
     ∇²ᵥL₁_vals!::Function # ∇²ᵥL₁_vals!(out, v, Λ, of)
-    # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+    # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
     θl₀::Vector{Float64} # default θ bounds
     θu₀::Vector{Float64}
     Φ!::Function # Φ!(out, v, Λ)
@@ -212,7 +212,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇h_rows, ∇h_cols, ∇h_vals_sym) = SparseArrays.findnz(∇h_sym)
     ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym; expression=Val{false})[2]
 
-    # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
+    # SBOPi NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
     Γ_sym = [G_sym; h_sym; -h_sym; z_sym; -z_sym]
     @assert(m == length(Γ_sym))
     Fv = Symbolics.build_function(F_sym, vp_sym; expression=Val{false})
@@ -240,7 +240,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇²ᵥL₁_rows, ∇²ᵥL₁_cols, ∇²ᵥL₁_vals_sym) = SparseArrays.findnz(∇²ᵥL₁_sym)
     ∇²ᵥL₁_vals! = Symbolics.build_function(∇²ᵥL₁_vals_sym, vp_sym, Λ_sym, of₁_sym; expression=Val{false})[2]
 
-    # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+    # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
     # by default v is free and Λ ≥ 0, but these will be overwritten later
     θ_sym = [v_sym; Λ_sym]
     @assert(nθ == length(θ_sym))
@@ -320,7 +320,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
         ∇h_rows,
         ∇h_cols,
         ∇h_vals!,
-        # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
+        # SBOPi NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
         Fv,
         Γ!,
         ∇ᵥF!,
@@ -334,7 +334,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
         ∇²ᵥL₁_rows,
         ∇²ᵥL₁_cols,
         ∇²ᵥL₁_vals!,
-        # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+        # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
         θl₀,
         θu₀,
         Φ!,

@@ -77,6 +77,12 @@ function setup_nlp_solve_IPOPT(n, m, xl, xu, gl, gu, f, g!, ∇ₓf!, ∇ₓg_ro
         Ipopt.AddIpoptNumOption(ipopt_prob, "tol", tol)
         Ipopt.AddIpoptIntOption(ipopt_prob, "max_iter", max_iter)
         Ipopt.AddIpoptIntOption(ipopt_prob, "print_level", print_level)
+        if is_using_HSL && !haskey(ENV, "HSL_PATH")
+            is_using_HSL = false
+            if verbosity > 0
+                print("HSL_PATH not found: Defaulting is_using_HSL = false. If you would like to use HSL, please obtain a license and download HSL_jll.jl (https://licences.stfc.ac.uk/products/Software/HSL/LibHSL), and set HSL_PATH environment variable to the extracted location.\n")
+            end
+        end    
         if is_using_HSL
             Ipopt.AddIpoptStrOption(ipopt_prob, "hsllib", HSL_jll.libhsl_path)
             Ipopt.AddIpoptStrOption(ipopt_prob, "linear_solver", "ma27")
@@ -133,6 +139,12 @@ function setup_mcp_solve_PATH(n, xl, xu, F, J_rows, J_cols, J_vals!)
         len .= J_len
         row .= J_row
         Cint(0)
+    end
+
+    if n > 300 && !haskey(ENV, "PATH_LICENSE_STRING")
+        if verbosity > 0
+            print("PATH_LICENSE_STRING not found and problem size is too large: Please obtain a license (https://pages.cs.wisc.edu/~ferris/path/julia/LICENSE), and set PATH_LICENSE_STRING environment variable.\n")
+        end
     end
 
     if haskey(ENV, "PATH_LICENSE_STRING")
