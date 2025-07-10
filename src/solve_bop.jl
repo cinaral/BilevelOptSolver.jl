@@ -853,83 +853,80 @@ function convert_J_to_bounds(J, bop)
     (; h_l, h_u, z_l, z_u)
 end
 
+function solve_high_point_nlp(bop; x_init=zeros(bop.nx), tol=1e-6, max_iter=1000)
+    xl = fill(-Inf, bop.n1 + bop.n2)
+    xu = fill(Inf, bop.n1 + bop.n2)
+    Gg_l = fill(0.0, bop.m1 + bop.m2)
+    Gg_u = fill(Inf, bop.m1 + bop.m2)
 
+    solve_high_point_nlp = setup_nlp_solve_IPOPT(bop.nx, bop.m1 + bop.m2, xl, xu, Gg_l, Gg_u, bop.F, bop.Gg!, bop.∇ₓF!, bop.∇ₓGg_rows, bop.∇ₓGg_cols, bop.∇ₓGg_vals!, bop.∇²ₓL₃_rows, bop.∇²ₓL₃_cols, bop.∇²ₓL₃_vals!)
 
-
-
-
-
-
-
-
-
-
-
-### unused 2025-07-10
-
-function solve_follower_bla_bla(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
-    x2_l = fill(-Inf, n2)
-    x2_u = fill(Inf, n2)
-    f = Symbolics.build_function(f_sym, x_sym; expression=Val{false})
-    g! = Symbolics.build_function(g_sym, x_sym; expression=Val{false})[2]
-
-    ∇ₓ₂f_sym = Symbolics.gradient(f_sym, x2_sym)
-    ∇ₓ₂f! = Symbolics.build_function(∇ₓ₂f_sym, x_sym; expression=Val{false})[2]
-
-    ∇ₓ₂g_sym = Symbolics.sparsejacobian(g_sym, x2_sym)
-    (∇ₓ₂g_rows, ∇ₓ₂g_cols, ∇ₓ₂g_vals) = SparseArrays.findnz(∇ₓ₂g_sym)
-    ∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals, x_sym; expression=Val{false})[2]
-
-    obj_factor = Symbolics.@variables(of)[1]
-    if isempty(λ_sym)
-        L = obj_factor * f_sym
-    else
-        L = obj_factor * f_sym + g_sym' * λ_sym # WARN: IPOPT convention: ∇²ₓ₂f(x) + λᵀ ∇²ₓ₂ g(x)
-    end
-
-    ∇ₓ₂L = Symbolics.gradient(L, x2_sym)
-    ∇ₓ₂ₓ₂L = Symbolics.sparsejacobian(∇ₓ₂L, x2_sym)
-    (∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L_vals_sym) = SparseArrays.findnz(∇ₓ₂ₓ₂L)
-    ∇ₓ₂ₓ₂L_vals! = Symbolics.build_function(∇ₓ₂ₓ₂L_vals_sym, x_sym, obj_factor, λ_sym; expression=Val{false})[2]
-
-    x = zeros(n1 + n2)
-
-    function solve_follower_nlp(x1; x2_init=zeros(n2), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
-        x[1:n1] .= x1
-        x2_inds = n1+1:n1+n2
-
-        function eval_f(x2::Vector{Float64})
-            x[x2_inds] .= x2
-            f(x)
-        end
-
-        function eval_g(g::Vector{Float64}, x2::Vector{Float64})
-            x[x2_inds] .= x2
-            g!(g, x)
-        end
-
-        function eval_∇ₓ₂f(∇ₓ₂f::Vector{Float64}, x2::Vector{Float64})
-            x[x2_inds] .= x2
-            ∇ₓ₂f!(∇ₓ₂f, x)
-        end
-
-        function eval_∇ₓ₂g_vals(∇ₓ₂g_vals::Vector{Float64}, x2::Vector{Float64})
-            x[x2_inds] .= x2
-            ∇ₓ₂g_vals!(∇ₓ₂g_vals, x)
-        end
-
-        function eval_∇ₓ₂ₓ₂L_vals(∇ₓ₂ₓ₂L_vals::Vector{Float64}, x2::Vector{Float64}, obj_factor::Float64, λ::Vector{Float64})
-            x[x2_inds] .= x2
-            ∇ₓ₂ₓ₂L_vals!(∇ₓ₂ₓ₂L_vals, x, obj_factor, λ)
-        end
-
-        solve = setup_nlp_solve_IPOPT(n2, m2, x2_l, x2_u, g_l, g_u, eval_f, eval_g, eval_∇ₓ₂f, ∇ₓ₂g_rows, ∇ₓ₂g_cols, eval_∇ₓ₂g_vals, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, eval_∇ₓ₂ₓ₂L_vals)
-        solve(; x_init=x2_init, tol, max_iter, print_level, is_using_HSL)
-    end
-
-    (; solve_follower_nlp, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L, ∇ₓ₂ₓ₂L_vals!)
+    x, λ, solvestat, _ = solve_high_point_nlp(; x_init, tol, max_iter, print_level=0)
+    (; x, λ, solvestat)
 end
 
+function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=1e-6, max_iter=1000)
+    x = zeros(bop.nx)
+    x[bop.x_inds["x1"]] .= x1
+    λ = zeros(bop.m2)
+    success = false
+    if solver == "IPOPT"
+        x2_l = fill(-Inf, bop.n2)
+        x2_u = fill(Inf, bop.n2)
+        gl = fill(0.0, bop.m2)
+        gu = fill(Inf, bop.m2)
+
+        function eval_f(x2::Vector{Float64})
+            x[bop.x_inds["x2"]] .= x2
+            bop.f(x)
+        end
+        function eval_g(g::Vector{Float64}, x2::Vector{Float64})
+            x[bop.x_inds["x2"]] .= x2
+            bop.g!(g, x)
+        end
+        function eval_∇ₓ₂f(∇ₓ₂f::Vector{Float64}, x2::Vector{Float64})
+            x[bop.x_inds["x2"]] .= x2
+            bop.∇ₓ₂f!(∇ₓ₂f, x)
+        end
+        function eval_∇ₓ₂g_vals(∇ₓ₂g_vals::Vector{Float64}, x2::Vector{Float64})
+            x[bop.x_inds["x2"]] .= x2
+            bop.∇ₓ₂g_vals!(∇ₓ₂g_vals, x)
+        end
+        function eval_∇²ₓ₂L₂_vals(∇²ₓ₂L₂_vals::Vector{Float64}, x2::Vector{Float64}, λ::Vector{Float64}, obj_factor::Float64)
+            x[bop.x_inds["x2"]] .= x2
+            bop.∇²ₓ₂L₂_vals!(∇²ₓ₂L₂_vals, x, λ, obj_factor)
+        end
+        solve = setup_nlp_solve_IPOPT(bop.n2, bop.m2, x2_l, x2_u, gl, gu, eval_f, eval_g, eval_∇ₓ₂f, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, eval_∇ₓ₂g_vals, bop.∇²ₓ₂L₂_rows, bop.∇²ₓ₂L₂_cols, eval_∇²ₓ₂L₂_vals)
+
+        x_out, λ_out, solvestat, _ = solve(; x_init=x2_init, tol, max_iter, print_level=0)
+        x[bop.x_inds["x2"]] .= x_out;
+        λ .= λ_out;
+        success = solvestat == 0
+    else
+        solver == "PATH"
+        v = zeros(bop.n)
+        v[bop.v_inds["x"]] .= x
+        z_init = zeros(bop.nz);
+        z_init[bop.z_inds["x2"]] = x2_init
+
+        function eval_F!(h, z::Vector{Float64})
+            v[bop.v_inds["z"]] .= z
+            bop.h!(h, v, 1.)
+        end
+        function eval_J_vals!(∇h, z::Vector{Float64})
+            v[bop.v_inds["z"]] .= z
+            bop.∇h_vals!(∇h, v, 1.)
+        end
+        solve = setup_mcp_solve_PATH(bop.nz, bop.zl₀, bop.zu₀, eval_F!, bop.∇h_rows, bop.∇h_cols, eval_J_vals!)
+
+        z_out, status, _ = solve(; x_init=z_init, tol, max_iter, is_silent=true)
+        x[bop.x_inds["x2"]] .= z_out[bop.z_inds["x2"]];
+        λ .= z_out[bop.z_inds["λ"]];
+        success = status == PATHSolver.MCP_Solved
+    end
+
+    (; x, λ, success)
+end
 
 function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
     z_sym = [x2_sym; λ_sym; s_sym]
@@ -977,45 +974,11 @@ function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym
     end
 end
 
-function setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, F_sym, G_sym, g_sym)
-    x_l = fill(-Inf, n1 + n2)
-    x_u = fill(Inf, n1 + n2)
-    Gg_l = fill(0.0, m1 + m2)
-    Gg_u = fill(Inf, m1 + m2)
+### unused 2025-07-10
 
-    F = Symbolics.build_function(F_sym, x_sym; expression=Val{false})
 
-    ∇ₓF_sym = Symbolics.gradient(F_sym, x_sym)
-    ∇ₓF = Symbolics.build_function(∇ₓF_sym, x_sym; expression=Val{false})[2]
-    #function f_zero(x::Vector{Float64})
-    #    F(x)
-    #end
 
-    Gg_sym = [G_sym; g_sym]
-    Gg! = Symbolics.build_function(Gg_sym, x_sym; expression=Val{false})[2]
 
-    #function ∇ₓf_zero(∇ₓf::Vector{Float64}, x::Vector{Float64})
-    #    ∇ₓf .= 0.0
-    #end
-
-    ∇ₓGg_sym = Symbolics.sparsejacobian(Gg_sym, x_sym)
-    (∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals) = SparseArrays.findnz(∇ₓGg_sym)
-    ∇ₓGg_vals! = Symbolics.build_function(∇ₓGg_vals, x_sym; expression=Val{false})[2]
-
-    Λ_sym = Symbolics.@variables(lamb[1:m1+m2])[1] |> Symbolics.scalarize
-    if isempty(Λ_sym)
-        L_feas = 0.0
-    else
-        L_feas = Gg_sym' * Λ_sym # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
-    end
-
-    ∇ₓL = Symbolics.gradient(L_feas, x_sym)
-    ∇ₓₓL = Symbolics.sparsejacobian(∇ₓL, x_sym)
-    (∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals_sym) = SparseArrays.findnz(∇ₓₓL)
-    ∇ₓₓL_feas_vals! = Symbolics.build_function(∇ₓₓL_vals_sym, x_sym, Λ_sym; expression=Val{false})[2]
-
-    setup_nlp_solve_IPOPT(n1 + n2, m1 + m2, x_l, x_u, Gg_l, Gg_u, F, Gg!, ∇ₓF, ∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_feas_vals!)
-end
 
 function setup_BOPᵢ_nlp(nv, mΛ, Ghs_l₀, Ghs_u₀, v_sym, F_sym, Ghs_sym)
     v_l₀ = fill(-Inf, nv)

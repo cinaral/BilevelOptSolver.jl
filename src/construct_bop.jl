@@ -195,17 +195,21 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     # by default x₂ is free and λ ≥ 0, but these will be overwritten later
     zl₀ = [fill(-Inf, n2); zeros(m2)] # default z lb
     zu₀ = fill(Inf, nz) # default z ub
-    h_sym = [L₂_sym; g_sym]
+    if nz > 0
+        h_sym = [∇ₓ₂L₂_sym; g_sym]
+    else
+        h_sym = []
+    end
     @assert(nz == length(zl₀))
     @assert(nz == length(zu₀))
     @assert(nz == length(h_sym))
-    h! = Symbolics.build_function(h_sym, vp_sym; expression=Val(false))[2]
+    h! = Symbolics.build_function(h_sym, vp_sym, of_sym; expression=Val(false))[2]
 
     # ∇_z h
     ∇h_sym = Symbolics.sparsejacobian(h_sym, z_sym) # Jacobian of F for the PATH solver
     ∇h_size = size(∇h_sym)
     (∇h_rows, ∇h_cols, ∇h_vals_sym) = SparseArrays.findnz(∇h_sym)
-    ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym; expression=Val{false})[2]
+    ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym, of_sym; expression=Val{false})[2]
 
     # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
     Γ_sym = [G_sym; h_sym; -h_sym; z_sym; -z_sym]

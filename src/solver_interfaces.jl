@@ -7,11 +7,11 @@ s.t.    x_l ≤ x ≤ x_u
         g_l ≤ g(x) ≤ g_u
 ```
 """
-function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals!)
-    @assert(n == length(x_l), "wrong x_l dimensions")
-    @assert(n == length(x_u), "wrong x_u dimensions")
-    @assert(m == length(g_l), "wrong g_l dimensions")
-    @assert(m == length(g_u), "wrong g_u dimensions")
+function setup_nlp_solve_IPOPT(n, m, xl, xu, gl, gu, f, g!, ∇ₓf!, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals!)
+    @assert(n == length(xl), "wrong x_l dimensions")
+    @assert(n == length(xu), "wrong x_u dimensions")
+    @assert(m == length(gl), "wrong g_l dimensions")
+    @assert(m == length(gu), "wrong g_u dimensions")
 
     n_nz_∇ₓg = length(∇ₓg_rows)
     @assert(n_nz_∇ₓg == length(∇ₓg_cols), "∇ₓg_rows and ∇ₓg_cols dimensions do not match")
@@ -52,19 +52,19 @@ function setup_nlp_solve_IPOPT(n, m, x_l, x_u, g_l, g_u, f, g!, ∇ₓf!, ∇ₓ
             rows .= ∇ₓₓL_rows
             cols .= ∇ₓₓL_cols
         else
-            ∇ₓₓL_vals!(vals, x, obj_factor, λ)
+            ∇ₓₓL_vals!(vals, x, -λ, obj_factor) # convention change: IPOPT expects L = obj_factor * f(x) + g(x)' λ
         end
     end
 
     # we return this function
-    function solve_nlp(; g_l=g_l, g_u=g_u, x_init=zeros(n), λ_init=zeros(m), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
+    function solve_nlp(; gl=gl, gu=gu, x_init=zeros(n), λ_init=zeros(m), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
         ipopt_prob = Ipopt.CreateIpoptProblem(
             n,
-            x_l,
-            x_u,
+            xl,
+            xu,
             m,
-            g_l,
-            g_u,
+            gl,
+            gu,
             n_nz_∇ₓg,
             n_nz_∇ₓₓL,
             eval_f,
@@ -104,7 +104,7 @@ x s.t. at least one of the following holds:
 J is the Jacobian: ∇ₓF
 ```
 """
-function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
+function setup_mcp_solve_PATH(n, xl, xu, F, J_rows, J_cols, J_vals!)
     #@assert(n == length(x_l), "wrong x_l dimensions")
     #@assert(n == length(x_u), "wrong x_u dimensions")
 
@@ -139,12 +139,12 @@ function setup_mcp_solve_PATH(n, x_l, x_u, F, J_rows, J_cols, J_vals!)
         PATHSolver.c_api_License_SetString(ENV["PATH_LICENSE_STRING"])
     end
 
-    function solve_mcp(; x_l=x_l, x_u=x_u, x_init=zeros(n), tol=1e-6, max_iter=500, is_silent=true, verbosity=0)
+    function solve_mcp(; xl=xl, xu=xu, x_init=zeros(n), tol=1e-6, max_iter=500, is_silent=true, verbosity=5)
         status, x, info = PATHSolver.solve_mcp(
             eval_F,
             eval_J,
-            x_l,
-            x_u,
+            xl,
+            xu,
             x_init,
             silent=is_silent,
             nnz=n_nz_J,
