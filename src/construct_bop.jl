@@ -17,12 +17,12 @@ struct BilevelOptProb
     g!::Function # g!(out, x) 
     ∇ₓ₂f!::Function # ∇ₓ₂f!(out, x)
     # ∇ₓ₂g
-    ∇ₓ₂g_size::Tuple
+    ∇ₓ₂g_size::Tuple{Int, Int}
     ∇ₓ₂g_rows::Vector{Int}
     ∇ₓ₂g_cols::Vector{Int}
     ∇ₓ₂g_vals!::Function # ∇ₓ₂g_vals!(out, x)
     # ∇²ₓ₂L₂, L₂ = of * f(x) - λ' g(x)
-    ∇²ₓ₂L₂_size::Tuple
+    ∇²ₓ₂L₂_size::Tuple{Int, Int}
     ∇²ₓ₂L₂_rows::Vector{Int}
     ∇²ₓ₂L₂_cols::Vector{Int}
     ∇²ₓ₂L₂_vals!::Function # ∇²ₓ₂L_vals!(out, v, λ, of)
@@ -31,7 +31,7 @@ struct BilevelOptProb
     zu₀::Vector{Float64}
     h!::Function # h!(out, v)
     # ∇_z h
-    ∇h_size::Tuple
+    ∇h_size::Tuple{Int, Int}
     ∇h_rows::Vector{Int}
     ∇h_cols::Vector{Int}
     ∇h_vals!::Function # ∇h_vals!(out, v)
@@ -40,12 +40,12 @@ struct BilevelOptProb
     Γ!::Function # Γ!(out, v)
     ∇ᵥF!::Function # Γ!(out, v) 
     # ∇ᵥΓ
-    ∇ᵥΓ_size::Tuple
+    ∇ᵥΓ_size::Tuple{Int, Int}
     ∇ᵥΓ_rows::Vector{Int}
     ∇ᵥΓ_cols::Vector{Int}
     ∇ᵥΓ_vals!::Function # ∇ᵥΓ_vals!(out, v)
     # ∇²ᵥL₁, L₁ = of * F(v) - Λ' Γ(v)
-    ∇²ᵥL₁_size::Tuple
+    ∇²ᵥL₁_size::Tuple{Int, Int}
     ∇²ᵥL₁_rows::Vector{Int}
     ∇²ᵥL₁_cols::Vector{Int}
     ∇²ᵥL₁_vals!::Function # ∇²ᵥL₁_vals!(out, v, Λ, of)
@@ -54,7 +54,7 @@ struct BilevelOptProb
     θu₀::Vector{Float64}
     Φ!::Function # Φ!(out, v, Λ)
     # ∇_θ Φ
-    ∇Φ_size::Tuple
+    ∇Φ_size::Tuple{Int, Int}
     ∇Φ_rows::Vector{Int}
     ∇Φ_cols::Vector{Int}
     ∇Φ_vals!::Function # ∇Φ_vals!(out, θ)
@@ -62,12 +62,12 @@ struct BilevelOptProb
     Gg!::Function # Gg!(out, x) 
     ∇ₓF!::Function # ∇ₓF!(out, x)
     # ∇ₓGg
-    ∇ₓGg_size::Tuple
+    ∇ₓGg_size::Tuple{Int, Int}
     ∇ₓGg_rows::Vector{Int}
     ∇ₓGg_cols::Vector{Int}
     ∇ₓGg_vals!::Function # ∇ₓGg_vals!(out, x)
     # ∇²ₓL₃, L₃ = of * F(x) - Λ₃' Gg(x)
-    ∇²ₓL₃_size::Tuple
+    ∇²ₓL₃_size::Tuple{Int, Int}
     ∇²ₓL₃_rows::Vector{Int}
     ∇²ₓL₃_cols::Vector{Int}
     ∇²ₓL₃_vals!::Function # ∇²ₓ₃L_vals!(out, x, Λ₃, of)
@@ -186,8 +186,8 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
         L₂_sym = of₂_sym * f_sym - g_sym' * λ_sym
     end
     ∇ₓ₂L₂_sym = Symbolics.gradient(L₂_sym, x2_sym)
-    ∇²ₓ₂L₂_size = size(∇ₓ₂L₂_sym)
     ∇²ₓ₂L₂_sym = Symbolics.sparsejacobian(∇ₓ₂L₂_sym, x2_sym)
+    ∇²ₓ₂L₂_size = size(∇²ₓ₂L₂_sym)
     (∇²ₓ₂L₂_rows, ∇²ₓ₂L₂_cols, ∇²ₓ₂L₂_vals_sym) = SparseArrays.findnz(∇²ₓ₂L₂_sym)
     ∇²ₓ₂L₂_vals! = Symbolics.build_function(∇²ₓ₂L₂_vals_sym, xp_sym, λ_sym, of₂_sym; expression=Val{false})[2]
 

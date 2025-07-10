@@ -33,13 +33,11 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
         end
     end
 
-    if bop.n_θ > 300 && !haskey(ENV, "PATH_LICENSE_STRING")
+    if bop.nθ > 300 && !haskey(ENV, "PATH_LICENSE_STRING")
         if verbosity > 0
             print("PATH_LICENSE_STRING not found and problem size is too large: Please obtain a license (https://pages.cs.wisc.edu/~ferris/path/julia/LICENSE), and set PATH_LICENSE_STRING environment variable.\n")
         end
     end
-
-    nx = bop.n1 + bop.n2
 
     iter_count = 0
     is_converged = false
@@ -55,8 +53,8 @@ function solve_bop(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, v
     is_very_wrong = false
 
     # buffer
-    x::Vector{Float64} = zeros(nx)
-    v = zeros(bop.nv)
+    x::Vector{Float64} = zeros(bop.nx)
+    v = zeros(bop.n)
     v[bop.v_inds["x"]] .= x_init[1:nx] # initialize
     Λ = zeros(bop.mΛ)
     Ghs_l = copy(bop.Ghs_l₀)
@@ -548,85 +546,6 @@ function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_ini
 
 end
 
-function check_v_Λ_BOPᵢ_KKT(v, Λ, bop, Ghs_l, Ghs_u; verbosity=0, tol=1e-5, is_infiltrating=false)
-    ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_shape, ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_shape = bop.info_BOPᵢ()
-    Ghs = zeros(bop.mΛ)
-    ∇ᵥF = zeros(bop.nv)
-    ∇ᵥGhs = sparse(∇ᵥGhs_rows, ∇ᵥGhs_cols, zeros(length(∇ᵥGhs_rows)), ∇ᵥGhs_shape[1], ∇ᵥGhs_shape[2])
-    ∇ᵥᵥL = sparse(∇ᵥᵥL_rows, ∇ᵥᵥL_cols, zeros(length(∇ᵥᵥL_rows)), ∇ᵥᵥL_shape[1], ∇ᵥᵥL_shape[2])
-    bop.eval_BOPᵢ!(Ghs, ∇ᵥF, ∇ᵥGhs.nzval, ∇ᵥᵥL.nzval, v, Λ)
-
-    is_stationary = all(isapprox.(∇ᵥF - ∇ᵥGhs' * Λ, 0; atol=2 * tol))
-    is_complement = isapprox(Ghs' * Λ, 0; atol=2 * tol) # complementarity
-    is_primal_feas = all(Ghs .≥ Ghs_l .- tol) && all(Ghs .≤ Ghs_u .+ tol)
-
-    is_sol_valid = true
-    if is_infiltrating
-        #Main.@infiltrate
-    end
-    if !(is_stationary && is_complement && is_primal_feas)
-        is_sol_valid = false
-    end
-    is_sol_valid
-end
-
-function is_follower_minimized(bop, v, Ji; tol=1e-6)
-    x = @view v[bop.v_inds["x"]]
-    λ = @view v[bop.v_inds["λ"]]
-    #s = @view v[bop.v_inds["s"]]
-
-    ∇ₓf = zeros(bop.n1 + bop.n2)
-    bop.deriv_funs.∇ₓf!(∇ₓf, x)
-    ∇ₓg_vals = zeros(length(bop.deriv_funs.∇ₓg_rows))
-    bop.deriv_funs.∇ₓg_vals!(∇ₓg_vals, x)
-    ∇ₓg = sparse(bop.deriv_funs.∇ₓg_rows, bop.deriv_funs.∇ₓg_cols, ∇ₓg_vals)
-    x2_inds = bop.n1+1:bop.n1+bop.n2
-    if bop.m2 > 0
-        is_stationary = all(isapprox.(∇ₓf[x2_inds] - ∇ₓg[:, x2_inds]' * λ, 0; atol=2 * tol))
-    else
-        is_stationary = all(isapprox.(∇ₓf[x2_inds], 0; atol=2 * tol))
-    end
-    is_primal_feas = all(bop.g(x) .≥ 0 - tol) # primal feas
-    is_dual_feas = all(λ .≥ 0 - tol) # dual feas
-
-    if bop.m2 > 0
-        is_complement = isapprox(bop.g(x)' * λ, 0; atol=10 * tol)   # complementarity
-    else
-        is_complement = true
-    end
-
-    ∇ₓ₂ₓ₂L_shape = size(bop.∇ₓ₂ₓ₂L)
-    ∇ₓ₂ₓ₂L = sparse(bop.∇ₓ₂ₓ₂L_rows, bop.∇ₓ₂ₓ₂L_cols, zeros(length(bop.∇ₓ₂ₓ₂L_rows)), ∇ₓ₂ₓ₂L_shape[1], ∇ₓ₂ₓ₂L_shape[2])
-    bop.∇ₓ₂ₓ₂L_vals!(∇ₓ₂ₓ₂L, x, 1.0, λ)
-
-    # tangent cone
-    act_inds = isapprox.(bop.g(x), 0; atol=2 * tol)
-    ∇ₓ₂g = ∇ₓg[:, x2_inds]
-
-    y = ones(bop.n2)
-
-    for i in 1:bop.m2
-        if act_inds[i] && ∇ₓ₂g[i] ≥ 0 - tol
-            y[i] = 0.0
-        end
-    end
-
-    is_minimum = isposdef(y' * ∇ₓ₂ₓ₂L * y)
-
-    #Main.@infiltrate
-    #∇ₓₓf_shape = size(bop.sym_derivs.∇ₓₓf)
-    #
-    #bop.deriv_funs.∇ₓₓf_vals!(∇ₓₓf, x)
-
-    #∇ₓₓg_shape = size(bop.sym_derivs.∇ₓₓg)
-    #∇ₓₓg = sparse(bop.deriv_funs.∇ₓₓg_rows, bop.deriv_funs.∇ₓₓg_cols, zeros(length(bop.deriv_funs.∇ₓₓg_rows)), ∇ₓₓg_shape[1], ∇ₓₓg_shape[2])
-    #bop.deriv_funs.∇ₓₓg_vals!(∇ₓₓg, x)
-
-    #∇ₓₓL = 
-    @info "x2 $(x[x2_inds]) λ $λ SC $is_stationary PF $is_primal_feas DF $is_dual_feas CC $is_complement MIN $is_minimum"
-    return is_stationary && is_primal_feas && is_dual_feas && is_complement && is_minimum
-end
-
 function initialize_z!(v, bop; verbosity=0, is_using_PATH=false, is_using_HSL=false, tol=1e-6)
     # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
     x1 = @view v[bop.v_inds["x1"]]
@@ -980,12 +899,47 @@ function solve_SBOP_nlp(bop, hl, hu, zu, zl; x_init=zeros(bop.nx), solver="IPOPT
     (v, Λ, success)
 end
 
+function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-6)
+    #@assert(n == length(x))
+    @assert(m == length(λ))
+    @assert(m == length(gl)) 
+    
+    g = zeros(m)
+    ∇ₓf = zeros(n)
+    ∇ₓg = sparse(∇ₓg_rows, ∇ₓg_cols, zeros(length(∇ₓg_rows)), ∇ₓg_size[1], ∇ₓg_size[2])
+    ∇²ₓL = sparse(∇²ₓL_rows, ∇²ₓL_cols, zeros(length(∇²ₓL_rows)), ∇²ₓL_size[1], ∇²ₓL_size[2])
+    g!(g, x)
+    ∇ₓf!(∇ₓf, x)
+    ∇ₓg_vals!(∇ₓg.nzval, x)
+    ∇²ₓL_vals!(∇²ₓL.nzval, x, λ, 1.0)
+    
+    # necessary conditions
+    is_stationary = all(isapprox.(∇ₓf - ∇ₓg' * λ, 0; atol=2 * tol))
+    is_complement = isapprox(g' * λ, 0; atol=2 * tol) # complementarity
+    is_primal_feas = all(g .≥ gl .- tol)
+    is_dual_feas = all(λ .≥ 0 - tol) # dual feas
+    is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
 
+    # sufficient conditions
+    act_inds = isapprox.(g, 0; atol=2 * tol)
+    y = ones(n)
 
+    for i in 1:m
+        if act_inds[i] && ∇ₓg[i] ≥ 0 - tol
+            y[i] = 0.0
+        end
+    end
+
+    is_sufficient = is_necessary && isposdef(y' * ∇²ₓL * y)
+#Main.@infiltrate
+
+    (; is_necessary, is_sufficient)
+end
+
+# for the follower's problem
+# check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L₂_size, bop.∇²ₓ₂L₂_rows, bop.∇²ₓ₂L₂_cols, bop.∇²ₓ₂L₂_vals!)
 
 ### unused 2025-07-10
-
-
 
 """
 ```
@@ -1031,5 +985,4 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
         check_feas(Λ_l, Λ_u, A_l, A_u, A)
     end
 end
-
 
