@@ -1,41 +1,82 @@
 struct BilevelOptProb
-    n1::Int # length(x₁)
-    n2::Int # length(x₂)
-    m1::Int # length(G(x))
-    m2::Int # length(g(x))
     F::Function # F(x)
     G::Function # G(x)
     f::Function # f(x)
     g::Function # g(x)
-    solve_follower_nlp::Function
-    solve_follower_KKT_mcp::Function
-    find_bilevel_feas_pt::Function
-    nv::Int # length(v) = n₁ + n₂ + m₂ + m₂ 
-    mΛ::Int # length(Λ) = m₁ + mₕ + m₂
-    mh::Int # length(h) = n₂ + m₂ + m₂ 
-    v_inds::Dict{String,UnitRange{Int64}} # indexing v := [x₁; z]
-    z_inds::Dict{String,UnitRange{Int64}} # indexing z := [x₂; λ; s]
-    z_l₀::Vector{Float64} # default z bounds 
-    z_u₀::Vector{Float64} # default z bounds 
-    Ghs_inds::Dict{String,UnitRange{Int64}}
-    Ghs_l₀::Vector{Float64} # default [G; h] bounds 
-    Ghs_u₀::Vector{Float64}
-    Ghs!::Function # Ghs(out, v), out := [G(v); h(v); s]
-    solve_BOPᵢ_nlp::Function
-    info_BOPᵢ::Function
-    eval_BOPᵢ!::Function
-    check_Λ_lp_feas::Function
-    n_θ::Int
-    θ_inds::Dict{String,UnitRange{Int64}} # indexing θ := [v; Λ; r], v := [x₁; z], z := [x₂; λ; s]
-    θ_l₀::Vector{Float64} # default θ bounds
-    θ_u₀::Vector{Float64}
-    solve_BOPᵢ_KKT_mcp::Function
-    deriv_funs
-    sym_derivs
-    ∇ₓ₂ₓ₂L_rows
-    ∇ₓ₂ₓ₂L_cols
-    ∇ₓ₂ₓ₂L
-    ∇ₓ₂ₓ₂L_vals!
+    n1::Int # length(x₁)
+    n2::Int # length(x₂)
+    m1::Int # length(G(x))
+    m2::Int # length(g(x))
+    nx::Int # length(x) = n₁ + n₂
+    nz::Int # length(z) = n₂ + m₂, z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl 
+    n::Int  # length(v) = n₁ + nz, v := [x₁; z]
+    m::Int  # length(Γ) = m₁ + 4*nz, Γ := [G; h; -h; z; -z] ≥ Γlᵢ (hlᵢ, huᵢ, zlᵢ, zuᵢ are computed later)
+    nθ::Int # length(θ) = n + m, θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl  
+    np::Int # (optional) # of appended non-decision variables (parameters)
+    # follower NLP: min f(x) s.t. g(x) ≥ 0
+    g!::Function # g!(out, x) 
+    ∇ₓ₂f!::Function # ∇ₓ₂f!(out, x)
+    # ∇ₓ₂g
+    ∇ₓ₂g_size::Tuple
+    ∇ₓ₂g_rows::Vector{Int}
+    ∇ₓ₂g_cols::Vector{Int}
+    ∇ₓ₂g_vals!::Function # ∇ₓ₂g_vals!(out, x)
+    # ∇²ₓ₂L₂, L₂ = of * f(x) - λ' g(x)
+    ∇²ₓ₂L₂_size::Tuple
+    ∇²ₓ₂L₂_rows::Vector{Int}
+    ∇²ₓ₂L₂_cols::Vector{Int}
+    ∇²ₓ₂L₂_vals!::Function # ∇²ₓ₂L_vals!(out, v, λ, of)
+    # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
+    zl₀::Vector{Float64} # default z bounds 
+    zu₀::Vector{Float64}
+    h!::Function # h!(out, v)
+    # ∇_z h
+    ∇h_size::Tuple
+    ∇h_rows::Vector{Int}
+    ∇h_cols::Vector{Int}
+    ∇h_vals!::Function # ∇h_vals!(out, v)
+    # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
+    Fv::Function # F(v)
+    Γ!::Function # Γ!(out, v)
+    ∇ᵥF!::Function # Γ!(out, v) 
+    # ∇ᵥΓ
+    ∇ᵥΓ_size::Tuple
+    ∇ᵥΓ_rows::Vector{Int}
+    ∇ᵥΓ_cols::Vector{Int}
+    ∇ᵥΓ_vals!::Function # ∇ᵥΓ_vals!(out, v)
+    # ∇²ᵥL₁, L₁ = of * F(v) - Λ' Γ(v)
+    ∇²ᵥL₁_size::Tuple
+    ∇²ᵥL₁_rows::Vector{Int}
+    ∇²ᵥL₁_cols::Vector{Int}
+    ∇²ᵥL₁_vals!::Function # ∇²ᵥL₁_vals!(out, v, Λ, of)
+    # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+    θl₀::Vector{Float64} # default θ bounds
+    θu₀::Vector{Float64}
+    Φ!::Function # Φ!(out, v, Λ)
+    # ∇_θ Φ
+    ∇Φ_size::Tuple
+    ∇Φ_rows::Vector{Int}
+    ∇Φ_cols::Vector{Int}
+    ∇Φ_vals!::Function # ∇Φ_vals!(out, θ)
+    # high-point NLP: min F(x) s.t. [G(x); g(x)] ≥ 0
+    Gg!::Function # Gg!(out, x) 
+    ∇ₓF!::Function # ∇ₓF!(out, x)
+    # ∇ₓGg
+    ∇ₓGg_size::Tuple
+    ∇ₓGg_rows::Vector{Int}
+    ∇ₓGg_cols::Vector{Int}
+    ∇ₓGg_vals!::Function # ∇ₓGg_vals!(out, x)
+    # ∇²ₓL₃, L₃ = of * F(x) - Λ₃' Gg(x)
+    ∇²ₓL₃_size::Tuple
+    ∇²ₓL₃_rows::Vector{Int}
+    ∇²ₓL₃_cols::Vector{Int}
+    ∇²ₓL₃_vals!::Function # ∇²ₓ₃L_vals!(out, x, Λ₃, of)
+    # for convenience
+    x_inds::Dict{String,UnitRange{Int64}} # indexes x := [x₁; x₂]
+    z_inds::Dict{String,UnitRange{Int64}} # indexes z := [x₂; λ]
+    v_inds::Dict{String,UnitRange{Int64}} # indexes v := [x₁; z]
+    Γ_inds::Dict{String,UnitRange{Int64}} # indexes Γ := [G; h; -h; z; -z]
+    θ_inds::Dict{String,UnitRange{Int64}} # indexes θ := [v; Λ]
 end
 
 """
@@ -46,7 +87,7 @@ Assume,
     f: Rⁿ²->R, 
     G: X->Rᵐ¹, 
     g: X->Rᵐ², 
-    are all continuous and twice differentiable.
+    are all twice continuously differentiable.
 
 Decision variables:
     x = [x₁, x₂] ∈ X ⊆ Rⁿ
@@ -62,554 +103,257 @@ Bilevel Optimization Problem (BOP), Standard (Optimistic):
                                     y   
                                     s.t.    y ∈ Rⁿ²
                                             g(x₁, y) ≥ 0 }           
-
-Consider H ⊆ S under Slater's constraint qualifications:
-        { x₂ ∈ Rⁿ²: ∃λ ∈ Rᵐ²        } 
-    H = { ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x)) = 0 }     (KKT conditions of follower)  
-        { g(x) ≥ 0 ⟂ λ ≥ 0          }
-```
-**Note**: ```∇ₓ₂ is ∇_(x₂), and not ∇ₓ²```
-```
-We can replace the complementarity constraints by enumerating (local) manifolds i ∈ I:
-                {  x₂ ∈ Rⁿ²: ∃λ ∈ Rᵐ²        }
-    H = ∪ Hᵢ := { ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x)) = 0  }   
-        i       { gⱼ(x) ≥ 0, λⱼ = 0, j ∈ J⁻ᵢ }   <- Inactive follower constraints           
-                { gⱼ(x) = 0, λⱼ ≥ 0, j ∈ J⁺ᵢ },  <- Active follower constraints
-    where for all i-th manifold, the index sets (J⁻ᵢ, J⁺ᵢ) satisfy:
-        J⁻ᵢ ∪ J⁺ᵢ = {1, …, 2⁽ᵐ²⁾}
-        J⁻ᵢ ∩ J⁺ᵢ = ∅
-        J⁺ᵢ ≠ J⁺ₖ, i ≠ k        
-```
-**Theorem**: ```x* is a local optimimum of BOP if and only if x* is a local optimium of BOPᵢ for all i: x* ∈ Hᵢ```
-```
-Reduced Bilevel Optimization Problem:                                     
-     min     F(x)
-    x,λ,s
-     s.t.    x₁ ∈ Rⁿ¹           (BOPᵢ)
-             G(x) ≥ 0
-             x₂ ∈ Hᵢ(x, λ, s)
-
-Let v := [x₁; x₂; λ; s], and h(v) be the complement of z := [x₂; λ; s]:
-                                         h(v)     ⟂       z
-                                         ^:=              ^:=
-                  0 = [ ∇ₓ₂f(x) - λᵀ ∇ₓ₂g(x)) ]   ⟂ -∞ ≤ [ x₂ ] ≤ ∞ (free)
-                  0 = [      g(x, y) - s      ]   ⟂ -∞ ≤ [ λ  ] ≤ ∞ (free) 
-                  0 ≤ [        λ              ]   ⟂  0 ≤ [ s  ] ≤ s_uᵢ  (upper bounds depend on manifold)  
-
-If we replace x₂ ∈ Hᵢ with more constraints, we can solve BOPᵢ as an NLP:              
-    min     F(x)
-     v
-    s.t.     x₁ ∈ Rⁿ¹            (BOPᵢ NLP)
-              0 ≤ G(x) 
-              0 ≤ hᵢ(v) ≤ h_uᵢ
-           z_lᵢ ≤   z   ≤ z_uᵢ
-    where the bounds are selected by first constructing J⁻ᵢ and J⁺ᵢ index sets.
-
-Let Ghᵢ := [G; hᵢ], and Λ := [Λ₁; Λₕ], the KKT conditions of this BOPᵢ NLP is:
-    ∃Λ ∈ R⁽ᵐ¹⁺ᵐʰ⁾, ∃Λ_l ∈ R⁽ⁿᵛ⁾, ∃Λ_u ∈ R⁽ⁿᵛ⁾:
-        ∇ᵥF(x) - Λᵀ ∇ᵥGhᵢ(v) - Λ_v_lᵀ + Λ_v_uᵀ = 0                                            
-                Ghᵢ(v) ≥ 0 ⟂   Λ ≥ 0              (KKT conditions of BOPᵢ NLP)
-              v - v_lᵢ ≥ 0 ⟂ Λ_v_lᵀ ≥ 0                
-             -v + v_uᵢ ≥ 0 ⟂ Λ_v_u ≥ 0 
-```
-**Note**: ```When v is given, this is an LP feasibility problem: A Λ_all = b, Λ_all ≥ 0 where Λ_all = [Λ; Λ_l; Λ_u]```    
 """
-function construct_bop(n1, n2, F, G, f, g; verbosity=0)
+function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     nx = n1 + n2 # length(x)
-    x_dummy = zeros(nx)
-    m1 = length(G(x_dummy))
-    m2 = length(g(x_dummy))
-    nv = n1 + n2 + m2 + m2 # length(v)
-    mh = n2 + m2 + m2 # length(h)
+    xp_dummy = zeros(nx + np) # optionally for p>0, xp would be appended by np parameters
+    m1 = length(G(xp_dummy))
+    m2 = length(g(xp_dummy))
+    nz = n2 + m2
+    n = n1 + nz
+    m = m1 + 4 * nz
+    nθ = n + m
+
     x1_sym = Symbolics.@variables(x1[1:n1])[1] |> Symbolics.scalarize
     x2_sym = Symbolics.@variables(x2[1:n2])[1] |> Symbolics.scalarize
-    #λ0_sym = Symbolics.@variables(lamb0[1])[1] |> Symbolics.scalarize
-    λ_sym = Symbolics.@variables(lamb[1:m2])[1] |> Symbolics.scalarize
-    s_sym = Symbolics.@variables(s[1:m2])[1] |> Symbolics.scalarize
-    z_sym = [x2_sym; λ_sym; s_sym] # z = [x₂; λ; s] ∈ R⁽ᵐʰ⁾
-    v_sym = [x1_sym; z_sym] # v = [x₁; x₂; λ; s] ∈ R⁽ⁿᵛ⁾
-    @assert(mh == length(z_sym))
-    @assert(nv == length(v_sym))
-
-    # defined for convenience
-    z_inds = Dict([
-        ("x2", 1:n2),
-        ("λ", n2+1:n2+m2),
-        ("s", n2+m2+1:n2+m2+m2),
-    ])
-    v_inds = Dict([
-        ("x1", 1:n1),
-        ("z", n1+1:n1+mh),
-        ("x", 1:nx),
-        ("x2", n1+1:nx),
-        ("λ", nx+1:nx+m2),
-        ("s", nx+m2+1:nx+2*m2)
-    ])
-
-    x_sym = [x1_sym; x2_sym]
+    λ_sym = Symbolics.@variables(λ[1:m2])[1] |> Symbolics.scalarize
+    p_sym = Symbolics.@variables(p[1:np])[1] |> Symbolics.scalarize
+    x_sym = [x1_sym; x2_sym] # x := [x₁; x₂]
+    z_sym = [x2_sym; λ_sym] # z := [x₂; λ]
+    v_sym = [x1_sym; z_sym] # z := [x₁; z]
+    @assert(nx == length(x_sym))
+    @assert(nz == length(z_sym))
+    @assert(n == length(v_sym))
     F_sym = F(x_sym)
     G_sym = G(x_sym)
     f_sym = f(x_sym)
     g_sym = g(x_sym)
 
-    ∇ₓ₂f = Symbolics.gradient(f_sym, x2_sym)
-    ∇ₓ₂g = Symbolics.sparsejacobian(g_sym, x2_sym)
+    xp_sym = [x_sym; p_sym]
+    vp_sym = [v_sym; p_sym]
 
-    g_s_sym = g_sym - s_sym
+    # we define these for convenience
+    x_inds = Dict([
+        ("x1", 1:n1),
+        ("x2", n1+1:n1+n2),
+        ("p", n1+n2+1:n1+n2+np)
+    ])
+    z_inds = Dict([
+        ("x2", 1:n2),
+        ("λ", n2+1:n2+m2)
+    ])
+    v_inds = Dict([
+        ("x", 1:nx),
+        ("x1", 1:n1),
+        ("z", n1+1:n1+nz),
+        ("x2", n1+1:nx),
+        ("λ", nx+1:nx+m2)
+    ])
+    Γ_inds = Dict([
+        ("G" => 1:m1),
+        ("hl" => m1+1:m1+nz),
+        ("hu" => m1+nz+1:m1+2*nz),
+        ("zl" => m1+2*nz+1:m1+3*nz),
+        ("zu" => m1+3*nz+1:m1+4*nz)
+    ])
+    θ_inds = Dict([
+        ("v" => 1:n),
+        ("Λ" => n+1:n+m),
+        ("ΛG" => n+1:n+m1),
+        ("Λhl" => n+m1+1:n+m1+nz),
+        ("Λhu" => n+m1+nz+1:n+m1+2*nz),
+        ("Λzl" => n+m1+2*nz+1:n+m1+3*nz),
+        ("Λzu" => n+m1+3*nz+1:n+m1+4*nz)
+    ])
 
+    # follower NLP: min f(x) s.t. g(x) ≥ 0
+    f = Symbolics.build_function(f_sym, xp_sym; expression=Val{false})
+    g! = Symbolics.build_function(g_sym, xp_sym; expression=Val{false})[2]
+    ∇ₓ₂f_sym = Symbolics.gradient(f_sym, x2_sym)
+    ∇ₓ₂f! = Symbolics.build_function(∇ₓ₂f_sym, xp_sym; expression=Val{false})[2]
+
+    # ∇ₓ₂g
+    ∇ₓ₂g_sym = Symbolics.sparsejacobian(g_sym, x2_sym)
+    ∇ₓ₂g_size = size(∇ₓ₂g_sym)
+    (∇ₓ₂g_rows, ∇ₓ₂g_cols, ∇ₓ₂g_vals_sym) = SparseArrays.findnz(∇ₓ₂g_sym)
+    ∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals_sym, xp_sym; expression=Val{false})[2]
+
+    # ∇²ₓ₂L₂, L₂ =  of f(x) - λ' g(x)
+    of_sym = Symbolics.@variables(of)[1] # objective factor
     if isempty(λ_sym)
-        h_sym = [∇ₓ₂f; g_s_sym; λ_sym]
+        L₂_sym = of_sym * f_sym
     else
-        h_sym = [∇ₓ₂f - ∇ₓ₂g' * λ_sym; g_s_sym; λ_sym]
+        L₂_sym = of_sym * f_sym - g_sym' * λ_sym
     end
-    @assert(mh == length(h_sym))
+    ∇ₓ₂L₂_sym = Symbolics.gradient(L₂_sym, x2_sym)
+    ∇²ₓ₂L₂_size = size(∇ₓ₂L₂_sym)
+    ∇²ₓ₂L₂_sym = Symbolics.sparsejacobian(∇ₓ₂L₂_sym, x2_sym)
+    (∇²ₓ₂L₂_rows, ∇²ₓ₂L₂_cols, ∇²ₓ₂L₂_vals_sym) = SparseArrays.findnz(∇²ₓ₂L₂_sym)
+    ∇²ₓ₂L₂_vals! = Symbolics.build_function(∇²ₓ₂L₂_vals_sym, xp_sym, λ_sym, of_sym; expression=Val{false})[2]
 
-    # hᵢ ⟂ z_lᵢ ≤ z ≤ z_uᵢ
-    # x₂, λ are free, but 0 ≤ s ≤ s_ubᵢ
-    z_l₀ = fill(-Inf, mh) # default z lb
-    z_u₀ = fill(Inf, mh) # default z ub
-    z_l₀[z_inds["s"]] .= zeros(m2)
+    # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
+    # by default x₂ is free and λ ≥ 0, but these will be overwritten later
+    zl₀ = [fill(-Inf, n2); zeros(m2)] # default z lb
+    zu₀ = fill(Inf, nz) # default z ub
+    h_sym = [L₂_sym; g_sym]
+    @assert(nz == length(zl₀))
+    @assert(nz == length(zu₀))
+    @assert(nz == length(h_sym))
+    h! = Symbolics.build_function(h_sym, vp_sym; expression=Val(false))[2]
 
-    g_l = fill(0.0, m2)
-    g_u = fill(Inf, m2)
-    solve_follower_nlp, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L, ∇ₓ₂ₓ₂L_vals! = setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
-    solve_follower_KKT_mcp = setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
-    find_bilevel_feas_pt = setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, F_sym, G_sym, g_sym)
+    # ∇_z h
+    ∇h_sym = Symbolics.sparsejacobian(h_sym, z_sym) # Jacobian of F for the PATH solver
+    ∇h_size = size(∇h_sym)
+    (∇h_rows, ∇h_cols, ∇h_vals_sym) = SparseArrays.findnz(∇h_sym)
+    ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym; expression=Val{false})[2]
 
-    mΛ = m1 + mh + m2 # length([G; h; s])
-    Ghs_inds = Dict([ # defined for convenience
-        ("G", 1:m1),
-        ("h", m1+1:m1+mh),
-        ("s", m1+mh+1:mΛ),
-        ("∇ₓ₂L", m1+1:m1+n2), # part of h that corresponds to follower's stationary condtion
-        ("g_s", m1+n2+1:m1+n2+m2),  # part of h that corresponds to follower's constraints
-        ("λ", m1+n2+m2+1:m1+mh)  # part of h that corresponds to follower's dual
-    ])
-    Ghs_l₀ = fill(-Inf, mΛ) # default Gh lower bound (shouldn't change)
-    Ghs_u₀ = fill(Inf, mΛ) # default Gh upper bound (this depends on follower solution)
-    # stationary condition and constraint - slack is zero, their complements x₂ and λ are free 
-    Ghs_l₀[Ghs_inds["G"]] .= 0
-    Ghs_l₀[Ghs_inds["∇ₓ₂L"]] .= 0
-    Ghs_u₀[Ghs_inds["∇ₓ₂L"]] .= 0
-    Ghs_l₀[Ghs_inds["g_s"]] .= 0
-    Ghs_u₀[Ghs_inds["g_s"]] .= 0
-    Ghs_l₀[Ghs_inds["λ"]] .= 0
-    Ghs_l₀[Ghs_inds["s"]] .= 0
+    # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
+    Γ_sym = [G_sym; h_sym; -h_sym; z_sym; -z_sym]
+    @assert(m == length(Γ_sym))
+    Fv = Symbolics.build_function(F_sym, vp_sym; expression=Val{false})
+    Γ! = Symbolics.build_function(Γ_sym, vp_sym; expression=Val(false))[2]
+    ∇ᵥF_sym = Symbolics.gradient(F_sym, vp_sym)
+    ∇ᵥF! = Symbolics.build_function(∇ᵥF_sym, vp_sym; expression=Val{false})[2]
 
-    Ghs_sym = [G_sym; h_sym; s_sym] # BOPᵢ constraints
-    @assert(mΛ == length(Ghs_sym))
+    # ∇ᵥΓ
+    ∇ᵥΓ_sym = Symbolics.sparsejacobian(Γ_sym, v_sym)
+    ∇ᵥΓ_size = size(∇ᵥΓ_sym)
+    (∇ᵥΓ_rows, ∇ᵥΓ_cols, ∇ᵥΓ_vals_sym) = SparseArrays.findnz(∇ᵥΓ_sym)
+    ∇ᵥΓ_vals! = Symbolics.build_function(∇ᵥΓ_vals_sym, vp_sym; expression=Val{false})[2]
 
-    solve_BOPᵢ_nlp, info_BOPᵢ, eval_BOPᵢ!, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape = setup_BOPᵢ_nlp(nv, mΛ, Ghs_l₀, Ghs_u₀, v_sym, F_sym, Ghs_sym)
+    # ∇²ᵥL₁, L₁ = F(v) - Λ' Γ(v)
+    Λ_sym = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
+    if isempty(λ_sym)
+        L₁_sym = of_sym * F_sym
+    else
+        L₁_sym = of_sym * F_sym - Γ_sym' * Λ_sym
+    end
 
-    check_Λ_lp_feas = setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds, z_inds)
+    ∇ᵥL₁_sym = Symbolics.gradient(L₁_sym, v_sym)
+    ∇²ᵥL₁_sym = Symbolics.sparsejacobian(∇ᵥL₁_sym, v_sym)
+    ∇²ᵥL₁_size = size(∇²ᵥL₁_sym)
+    (∇²ᵥL₁_rows, ∇²ᵥL₁_cols, ∇²ᵥL₁_vals_sym) = SparseArrays.findnz(∇²ᵥL₁_sym)
+    ∇²ᵥL₁_vals! = Symbolics.build_function(∇²ᵥL₁_vals_sym, vp_sym, Λ_sym, of_sym; expression=Val{false})[2]
 
-    # F_path ⟂ θ_l ≤ θ ≤ θ_u
-    mΛ_mcp = m1 + mh
-    Gh_sym = [G_sym; h_sym]
-    @assert(mΛ_mcp == length(Gh_sym))
+    # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+    # by default v is free and Λ ≥ 0, but these will be overwritten later
+    θ_sym = [v_sym; Λ_sym]
+    @assert(nθ == length(θ_sym))
+    θp_sym = [v_sym; Λ_sym; p_sym]
+    θl₀ = [fill(-Inf, n); zeros(m)] # default θ lb
+    θl₀[θ_inds["Λhl"]] .= zl₀
+    θu₀ = fill(Inf, nθ) # default θ ub
+    θu₀[θ_inds["Λhu"]] .= zu₀
+    Φ_sym = [∇ᵥL₁_sym; Γ_sym]
+    Φ! = Symbolics.build_function(Φ_sym, θp_sym; expression=Val(false))[2]
+    ∇Φ_sym = Symbolics.sparsejacobian(Φ_sym, θ_sym)
+    ∇Φ_size = size(∇Φ_sym)
+    (∇Φ_rows, ∇Φ_cols, ∇Φ_vals_sym) = SparseArrays.findnz(∇Φ_sym)
+    ∇Φ_vals! = Symbolics.build_function(∇Φ_vals_sym, θp_sym; expression=Val{false})[2]
 
-    nθ = nv + 2 * mΛ_mcp
+    # high-point NLP: min F(x) s.t. [G(x); g(x)] ≥ 0
+    ∇ₓF_sym = Symbolics.gradient(F_sym, x_sym)
+    ∇ₓF! = Symbolics.build_function(∇ₓF_sym, xp_sym; expression=Val{false})[2]
+    Gg_sym = [G_sym; g_sym]
+    Gg! = Symbolics.build_function(Gg_sym, xp_sym; expression=Val{false})[2]
 
-    θ_inds = Dict([ # defined for convenience
-        ("v" => 1:nv),
-        ("Λ" => nv+1:nv+mΛ_mcp),
-        ("r" => nv+mΛ_mcp+1:nv+2*mΛ_mcp),
-        ("ΛG" => nv+1:nv+m1), # part of Λ that corresponds to G
-        ("Λh" => nv+m1+1:nv+m1+mh), # part of Λ that corresponds to h (follower's KKT)
-        ("z" => n1+1:n1+mh), # part of v that corresponds to z
-        ("rG" => nv+mΛ_mcp+1:nv+mΛ_mcp+m1), # part of r that corresponds to G
-        ("rh" => nv+mΛ_mcp+m1+1:nv+2*mΛ_mcp), # part of r that corresponds to h (follower's KKT)
-    ])
-    # θ := [v_sym; Λ_sym; r_sym] 
-    θ_l₀ = fill(-Inf, nθ)
-    θ_u₀ = fill(Inf, nθ)
-    θ_l₀[θ_inds["rh"]] .= z_l₀
-    θ_u₀[θ_inds["rh"]] .= z_u₀
-    θ_l₀[θ_inds["rG"]] .= 0
+    # ∇ₓGg
+    ∇ₓGg_sym = Symbolics.sparsejacobian(Gg_sym, x_sym)
+    ∇ₓGg_size = size(∇ₓGg_sym)
+    (∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals) = SparseArrays.findnz(∇ₓGg_sym)
+    ∇ₓGg_vals! = Symbolics.build_function(∇ₓGg_vals, xp_sym; expression=Val{false})[2]
 
-    Λ_mcp_sym = Symbolics.@variables(Λ[1:mΛ_mcp])[1] |> Symbolics.scalarize # this Λ ⟂ [G; h]
-    r_mcp_sym = Symbolics.@variables(r[1:mΛ_mcp])[1] |> Symbolics.scalarize # slacks for Gh
-    θ_sym = [v_sym; Λ_mcp_sym; r_mcp_sym]
-
-    solve_BOPᵢ_KKT_mcp = setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym, θ_sym, Λ_mcp_sym, r_mcp_sym)
-
-    #Gh! = Symbolics.build_function(Gh_sym, v_sym; expression=Val{false})[2]
-    # TODO: used only for verification, this should be optional to save construction time in the future
-    (deriv_funs, sym_derivs) = generate_derivatives(n1, n2, m1, m2, x_sym, F_sym, G_sym, f_sym, g_sym)
+    # ∇²ₓL₃, L₃ = F(x) - Λ₃' Gg(x)
+    Λ₃_sym = Symbolics.@variables(Λ[1:m1+m2])[1] |> Symbolics.scalarize
+    if isempty(Λ₃_sym)
+        L₃_sym = of_sym * F_sym
+    else
+        L₃_sym = of_sym * F_sym - Gg_sym' * Λ₃_sym
+    end
+    ∇ₓL₃_sym = Symbolics.gradient(L₃_sym, x_sym)
+    ∇²ₓL_sym = Symbolics.sparsejacobian(∇ₓL₃_sym, x_sym)
+    ∇²ₓL₃_size = size(∇²ₓL_sym)
+    (∇²ₓL₃_rows, ∇²ₓL₃_cols, ∇²ₓL₃_vals_sym) = SparseArrays.findnz(∇²ₓL_sym)
+    ∇²ₓL₃_vals! = Symbolics.build_function(∇²ₓL₃_vals_sym, xp_sym, Λ₃_sym, of_sym; expression=Val{false})[2]
 
     BilevelOptProb(
-        n1,
-        n2,
-        m1,
-        m2,
         F,
         G,
         f,
         g,
-        solve_follower_nlp,
-        solve_follower_KKT_mcp,
-        find_bilevel_feas_pt,
-        nv,
-        mΛ,
-        mh,
-        v_inds,
-        z_inds,
-        z_l₀,
-        z_u₀,
-        Ghs_inds,
-        Ghs_l₀,
-        Ghs_u₀,
-        Ghs!,
-        solve_BOPᵢ_nlp,
-        info_BOPᵢ,
-        eval_BOPᵢ!,
-        check_Λ_lp_feas,
+        n1,
+        n2,
+        m1,
+        m2,
+        nx,
+        nz,
+        n,
+        m,
         nθ,
-        θ_inds,
-        θ_l₀,
-        θ_u₀,
-        solve_BOPᵢ_KKT_mcp,
-        deriv_funs,
-        sym_derivs,
-        ∇ₓ₂ₓ₂L_rows, 
-        ∇ₓ₂ₓ₂L_cols, 
-        ∇ₓ₂ₓ₂L, 
-        ∇ₓ₂ₓ₂L_vals!
-    )
-end
-
-function setup_follower_nlp(n1, n2, m2, g_l, g_u, x_sym, λ_sym, x2_sym, f_sym, g_sym)
-    x2_l = fill(-Inf, n2)
-    x2_u = fill(Inf, n2)
-    f = Symbolics.build_function(f_sym, x_sym; expression=Val{false})
-    g! = Symbolics.build_function(g_sym, x_sym; expression=Val{false})[2]
-
-    ∇ₓ₂f_sym = Symbolics.gradient(f_sym, x2_sym)
-    ∇ₓ₂f! = Symbolics.build_function(∇ₓ₂f_sym, x_sym; expression=Val{false})[2]
-
-    ∇ₓ₂g_sym = Symbolics.sparsejacobian(g_sym, x2_sym)
-    (∇ₓ₂g_rows, ∇ₓ₂g_cols, ∇ₓ₂g_vals) = SparseArrays.findnz(∇ₓ₂g_sym)
-    ∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals, x_sym; expression=Val{false})[2]
-
-    obj_factor = Symbolics.@variables(of)[1]
-    if isempty(λ_sym)
-        L = obj_factor * f_sym
-    else
-        L = obj_factor * f_sym + g_sym' * λ_sym # WARN: IPOPT convention: ∇²ₓ₂f(x) + λᵀ ∇²ₓ₂ g(x)
-    end
-
-    ∇ₓ₂L = Symbolics.gradient(L, x2_sym)
-    ∇ₓ₂ₓ₂L = Symbolics.sparsejacobian(∇ₓ₂L, x2_sym)
-    (∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L_vals_sym) = SparseArrays.findnz(∇ₓ₂ₓ₂L)
-    ∇ₓ₂ₓ₂L_vals! = Symbolics.build_function(∇ₓ₂ₓ₂L_vals_sym, x_sym, obj_factor, λ_sym; expression=Val{false})[2]
-
-    x = zeros(n1 + n2)
-
-    function solve_follower_nlp(x1; x2_init=zeros(n2), tol=1e-6, max_iter=1000, print_level=0, is_using_HSL=false)
-        x[1:n1] .= x1
-        x2_inds = n1+1:n1+n2
-
-        function eval_f(x2::Vector{Float64})
-            x[x2_inds] .= x2
-            f(x)
-        end
-
-        function eval_g(g::Vector{Float64}, x2::Vector{Float64})
-            x[x2_inds] .= x2
-            g!(g, x)
-        end
-
-        function eval_∇ₓ₂f(∇ₓ₂f::Vector{Float64}, x2::Vector{Float64})
-            x[x2_inds] .= x2
-            ∇ₓ₂f!(∇ₓ₂f, x)
-        end
-
-        function eval_∇ₓ₂g_vals(∇ₓ₂g_vals::Vector{Float64}, x2::Vector{Float64})
-            x[x2_inds] .= x2
-            ∇ₓ₂g_vals!(∇ₓ₂g_vals, x)
-        end
-
-        function eval_∇ₓ₂ₓ₂L_vals(∇ₓ₂ₓ₂L_vals::Vector{Float64}, x2::Vector{Float64}, obj_factor::Float64, λ::Vector{Float64})
-            x[x2_inds] .= x2
-            ∇ₓ₂ₓ₂L_vals!(∇ₓ₂ₓ₂L_vals, x, obj_factor, λ)
-        end
-
-        solve = setup_nlp_solve_IPOPT(n2, m2, x2_l, x2_u, g_l, g_u, eval_f, eval_g, eval_∇ₓ₂f, ∇ₓ₂g_rows, ∇ₓ₂g_cols, eval_∇ₓ₂g_vals, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, eval_∇ₓ₂ₓ₂L_vals)
-        solve(; x_init=x2_init, tol, max_iter, print_level, is_using_HSL)
-    end
-
-    (; solve_follower_nlp, ∇ₓ₂ₓ₂L_rows, ∇ₓ₂ₓ₂L_cols, ∇ₓ₂ₓ₂L, ∇ₓ₂ₓ₂L_vals!)
-end
-
-
-function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
-    z_sym = [x2_sym; λ_sym; s_sym]
-    n_z = length(z_sym)
-    z_l = fill(-Inf, n_z)
-    z_u = fill(Inf, n_z)
-    #θ_l[θ_inds["λ"]] .= 0.0
-    z_l[z_inds["s"]] .= 0.0
-
-    if isempty(λ_sym)
-        L = f_sym
-    else
-        L = f_sym - g_sym' * λ_sym
-    end
-
-    g_s_sym = g_sym .- s_sym
-
-    ∇ₓ₂L_sym = Symbolics.gradient(L, x2_sym)
-    PF_sym = [∇ₓ₂L_sym; g_s_sym; λ_sym] # P(ATH)F function for the PATH solver, not to be confused with leader's cost
-
-    x1_z_sym = [x1_sym; x2_sym; λ_sym; s_sym]
-    PF! = Symbolics.build_function(PF_sym, x1_z_sym; expression=Val(false))[2]
-    PJ_sym = Symbolics.sparsejacobian(PF_sym, z_sym) # Jacobian of F for the PATH solver
-
-    (PJ_rows, PJ_cols, PJ_vals_sym) = SparseArrays.findnz(PJ_sym)
-    PJ_vals! = Symbolics.build_function(PJ_vals_sym, x1_z_sym; expression=Val{false})[2]
-
-    function solve_follower_KKT_mcp(x1; z_init=zeros(n_z), tol=1e-6, max_iter=1000, is_silent=true)
-        x1_z = zeros(length(x1_z_sym))
-        x1_z[1:n1] .= x1
-        z_inds = n1+1:n1+n2+2*m2
-
-        function eval_PF!(F, z::Vector{Float64})
-            x1_z[z_inds] .= z
-            PF!(F, x1_z)
-        end
-
-        function eval_PJ_vals!(J_vals, z::Vector{Float64})
-            x1_z[z_inds] .= z
-            PJ_vals!(J_vals, x1_z)
-        end
-
-        solve = setup_mcp_solve_PATH(n_z, z_l, z_u, eval_PF!, PJ_rows, PJ_cols, eval_PJ_vals!)
-        solve(; x_init=z_init, tol, max_iter, is_silent)
-    end
-end
-
-function setup_find_bile_feas_pt(n1, n2, m1, m2, x_sym, F_sym, G_sym, g_sym)
-    x_l = fill(-Inf, n1 + n2)
-    x_u = fill(Inf, n1 + n2)
-    Gg_l = fill(0.0, m1 + m2)
-    Gg_u = fill(Inf, m1 + m2)
-
-    F = Symbolics.build_function(F_sym, x_sym; expression=Val{false})
-
-    ∇ₓF_sym = Symbolics.gradient(F_sym, x_sym)
-    ∇ₓF = Symbolics.build_function(∇ₓF_sym, x_sym; expression=Val{false})[2]
-    #function f_zero(x::Vector{Float64})
-    #    F(x)
-    #end
-
-    Gg_sym = [G_sym; g_sym]
-    Gg! = Symbolics.build_function(Gg_sym, x_sym; expression=Val{false})[2]
-
-    #function ∇ₓf_zero(∇ₓf::Vector{Float64}, x::Vector{Float64})
-    #    ∇ₓf .= 0.0
-    #end
-
-    ∇ₓGg_sym = Symbolics.sparsejacobian(Gg_sym, x_sym)
-    (∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals) = SparseArrays.findnz(∇ₓGg_sym)
-    ∇ₓGg_vals! = Symbolics.build_function(∇ₓGg_vals, x_sym; expression=Val{false})[2]
-
-    Λ_sym = Symbolics.@variables(lamb[1:m1+m2])[1] |> Symbolics.scalarize
-    if isempty(Λ_sym)
-        L_feas = 0.0
-    else
-        L_feas = Gg_sym' * Λ_sym # WARN: IPOPT convention: λᵀ ∇²ₓGg(x) because zero cost
-    end
-
-    ∇ₓL = Symbolics.gradient(L_feas, x_sym)
-    ∇ₓₓL = Symbolics.sparsejacobian(∇ₓL, x_sym)
-    (∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals_sym) = SparseArrays.findnz(∇ₓₓL)
-    ∇ₓₓL_feas_vals! = Symbolics.build_function(∇ₓₓL_vals_sym, x_sym, Λ_sym; expression=Val{false})[2]
-
-    setup_nlp_solve_IPOPT(n1 + n2, m1 + m2, x_l, x_u, Gg_l, Gg_u, F, Gg!, ∇ₓF, ∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_feas_vals!)
-end
-
-function setup_BOPᵢ_nlp(nv, mΛ, Ghs_l₀, Ghs_u₀, v_sym, F_sym, Ghs_sym)
-    v_l₀ = fill(-Inf, nv)
-    v_u₀ = fill(Inf, nv)
-    F = Symbolics.build_function(F_sym, v_sym; expression=Val{false})
-
-    Ghs! = Symbolics.build_function(Ghs_sym, v_sym; expression=Val{false})[2]
-
-    ∇ᵥF_sym = Symbolics.gradient(F_sym, v_sym)
-    ∇ᵥF! = Symbolics.build_function(∇ᵥF_sym, v_sym; expression=Val{false})[2]
-
-    ∇ᵥGhs_sym = Symbolics.sparsejacobian(Ghs_sym, v_sym)
-    (∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals_sym) = SparseArrays.findnz(∇ᵥGhs_sym)
-    ∇ᵥGhs_vals! = Symbolics.build_function(∇ᵥGhs_vals_sym, v_sym; expression=Val{false})[2]
-
-    Λ_sym = Symbolics.@variables(lamb[1:mΛ])[1] |> Symbolics.scalarize
-    obj_factor = Symbolics.@variables(of)[1]
-    L_sym = obj_factor * F_sym + Ghs_sym' * Λ_sym # WARN: IPOPT convention: ∇ᵥᵥF(v) + Λᵀ ∇ᵥᵥ[G(v); h(v)]
-    ∇ᵥL_sym = Symbolics.gradient(L_sym, v_sym)
-    ∇ᵥᵥL_sym = Symbolics.sparsejacobian(∇ᵥL_sym, v_sym)
-    (∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_vals_sym) = SparseArrays.findnz(∇ᵥᵥL_sym)
-    ∇ᵥᵥL_vals! = Symbolics.build_function(∇ᵥᵥL_vals_sym, v_sym, obj_factor, Λ_sym; expression=Val{false})[2]
-
-    solve = setup_nlp_solve_IPOPT(nv, mΛ, v_l₀, v_u₀, Ghs_l₀, Ghs_u₀, F, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_vals!)
-
-    # used to verify solutions
-    function info()
-        (; ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_shape=size(∇ᵥGhs_sym), ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_shape=size(∇ᵥᵥL_sym))
-    end
-
-    function eval!(Ghs, ∇ᵥF, ∇ᵥGh_vals, ∇ᵥᵥL_vals, v, Λ)
-        Ghs!(Ghs, v)
-        ∇ᵥF!(∇ᵥF, v)
-        ∇ᵥGhs_vals!(∇ᵥGh_vals, v)
-        ∇ᵥᵥL_vals!(∇ᵥᵥL_vals, v, 1.0, Λ)
-    end
-
-    (; solve, info, eval!, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape=size(∇ᵥGhs_sym))
-end
-
-"""
-```
-KKT conditions for BOPᵢ is practically an LP feasibility problem when v is given:
-    ∃Λ ∈ R⁽ᵐ¹⁺ᵐʰ⁾, ∃Λ_l ∈ R⁽ⁿᵛ⁾, ∃Λ_u ∈ R⁽ⁿᵛ⁾:
-            ∇ᵥF(x) - Λᵀ ∇ᵥGhs(v) = 0              (KKT conditions of BOPᵢ NLP)                               
-     Gh_uᵢ ≥ Ghs(v) ≥ Gh_l₀ ⟂   Λ ≥ 0              
-
-    ∃Λ ∈ R⁽ᵐ¹⁺ᵐʰ⁾, ∃Λ_l ∈ R⁽ⁿᵛ⁾, ∃Λ_u ∈ R⁽ⁿᵛ⁾:
-        ∇ᵥF(x) - Λᵀ ∇ᵥGhs(v)  = 0                                            
-     Gh_uᵢ ≥ Gh(v) ≥ Gh_l₀ ⟂    Λ ≥ 0              (KKT conditions of BOPᵢ NLP)
-```
-
-"""
-function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape, Ghs_inds, z_inds; tol=1e-6)
-    check_feas = setup_lp_feas_check_HiGHS(mΛ)
-
-    function check_Λ_lp_feas(v, z_l, z_u, h_l, h_u)
-        Ghs = zeros(mΛ)
-        Ghs!(Ghs, v)
-        ∇ᵥF = zeros(nv)
-        ∇ᵥF!(∇ᵥF, v)
-        ∇ᵥGhs = sparse(∇ᵥGhs_rows, ∇ᵥGhs_cols, zeros(Cdouble, length(∇ᵥGhs_rows)), ∇ᵥGhs_shape[1], ∇ᵥGhs_shape[2])
-        ∇ᵥGhs_vals!(∇ᵥGhs.nzval, v)
-
-        # this part ensures dual feasibility
-        Λ_l = fill(0., mΛ)
-        Λ_u = fill(Inf, mΛ)
-        # Λₕ=z is complement to h, s is complement to λ
-        Λ_l[Ghs_inds["h"]] .= z_l 
-        Λ_u[Ghs_inds["h"]] .= z_u
-        Λ_l[Ghs_inds["s"]] .= z_l[z_inds["s"]]
-        Λ_u[Ghs_inds["s"]] .= z_u[z_inds["s"]]
-# Main.@infiltrate
-        # constraint matrix is column-wise, this part checks :
-        # ∇ᵥF - Λ' * ∇ᵥGhs = 0 (stationarity)
-        # Λ' * Ghs = 0 (complementarity)
-        A_l = [∇ᵥF; 0;]
-        A_u = [∇ᵥF; 0;]
-        A = [∇ᵥGhs'; Ghs';] # violates constraint qualifications like this
-        #Main.@infiltrate
-
-        check_feas(Λ_l, Λ_u, A_l, A_u, A)
-    end
-end
-
-
-function setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym, θ_sym, Λ_sym, r_sym)
-    L = F_sym - Gh_sym' * Λ_sym
-    ∇ᵥL_sym = Symbolics.gradient(L, v_sym)
-    Gh_r_sym = Gh_sym .- r_sym
-    # F ⟂ θ = [v_sym; Λ_sym; r_sym] 
-    PF_sym = [∇ᵥL_sym; Gh_r_sym; Λ_sym]
-
-    PF! = Symbolics.build_function(PF_sym, θ_sym; expression=Val(false))[2]
-    PJ = Symbolics.sparsejacobian(PF_sym, θ_sym)
-
-    (PJ_rows, PJ_cols, PJ_vals) = SparseArrays.findnz(PJ)
-    PJ_vals! = Symbolics.build_function(PJ_vals, θ_sym; expression=Val{false})[2]
-
-    setup_mcp_solve_PATH(nθ, θ_l₀, θ_u₀, PF!, PJ_rows, PJ_cols, PJ_vals!)
-end
-
-"""
-Generate derivative functions (currently unused 2025-06-20)
-"""
-function generate_derivatives(n1, n2, m1, m2, x_sym, F_sym, G_sym, f_sym, g_sym)
-    nx = n1 + n2 # length(x)
-    # First-order derivatives --- ∇ₓ
-    ∇ₓF_sym = Symbolics.gradient(F_sym, x_sym)
-    ∇ₓf_sym = Symbolics.gradient(f_sym, x_sym)
-    ∇ₓG_sym = Symbolics.sparsejacobian(G_sym, x_sym)
-    ∇ₓg_sym = Symbolics.sparsejacobian(g_sym, x_sym)
-    @assert(nx == length(∇ₓF_sym))
-    @assert(nx == length(∇ₓf_sym))
-    @assert((m1, nx) == size(∇ₓG_sym))
-    @assert((m2, nx) == size(∇ₓg_sym))
-    # ∇ₓF!(val, x)
-    ∇ₓF! = Symbolics.build_function(∇ₓF_sym, x_sym; expression=Val{false})[2]
-    # ∇ₓf!(val, x)
-    ∇ₓf! = Symbolics.build_function(∇ₓf_sym, x_sym; expression=Val{false})[2]
-    # ∇ₓG_rows, ∇ₓG_cols, ∇ₓG!(val, x)
-    (∇ₓG_rows, ∇ₓG_cols, ∇ₓG_vals_sym) = SparseArrays.findnz(∇ₓG_sym)
-    ∇ₓG_vals! = Symbolics.build_function(∇ₓG_vals_sym, x_sym; expression=Val{false})[2]
-    # ∇ₓg_rows, ∇ₓg_cols, ∇ₓg!(val, x)
-    (∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals_sym) = SparseArrays.findnz(∇ₓg_sym)
-    ∇ₓg_vals! = Symbolics.build_function(∇ₓg_vals_sym, x_sym; expression=Val{false})[2]
-    # Second-order derivatives --- ∇ₓ²
-    ∇ₓₓF_sym = Symbolics.sparsejacobian(∇ₓF_sym, x_sym)
-    ∇ₓₓf_sym = Symbolics.sparsejacobian(∇ₓf_sym, x_sym)
-    ∇ₓₓG_sym = Symbolics.sparsejacobian(vec(Matrix(∇ₓG_sym)), x_sym) # passing a full vectorized matrix
-    ∇ₓₓg_sym = Symbolics.sparsejacobian(vec(Matrix(∇ₓg_sym)), x_sym)
-    @assert((nx, nx) == size(∇ₓₓF_sym))
-    @assert((nx, nx) == size(∇ₓₓf_sym))
-    @assert((m1 * nx, nx) == size(∇ₓₓG_sym))
-    @assert((m2 * nx, nx) == size(∇ₓₓg_sym))
-    # ∇ₓ²F_rows, ∇ₓ²F_cols, ∇ₓ²F!(val, x)
-    (∇ₓₓF_rows, ∇ₓₓF_cols, ∇ₓₓF_vals_sym) = SparseArrays.findnz(∇ₓₓF_sym)
-    ∇ₓₓF_vals! = Symbolics.build_function(∇ₓₓF_vals_sym, x_sym; expression=Val{false})[2]
-    # ∇ₓ²f_rows, ∇ₓ²f_cols, ∇ₓ²f!(val, x)
-    (∇ₓₓf_rows, ∇ₓₓf_cols, ∇ₓₓf_vals_sym) = SparseArrays.findnz(∇ₓₓf_sym)
-    ∇ₓₓf_vals! = Symbolics.build_function(∇ₓₓf_vals_sym, x_sym; expression=Val{false})[2]
-    # ∇ₓ²G_rows, ∇ₓ²G_cols, ∇ₓ²G!(val, x)
-    (∇ₓₓG_rows, ∇ₓₓG_cols, ∇ₓₓG_vals_sym) = SparseArrays.findnz(∇ₓₓG_sym)
-    ∇ₓₓG_vals! = Symbolics.build_function(∇ₓₓG_vals_sym, x_sym; expression=Val{false})[2]
-    # ∇ₓ²g_rows, ∇ₓ²g_cols, ∇ₓ²g!(val, x)
-    (∇ₓₓg_rows, ∇ₓₓg_cols, ∇ₓₓg_vals_sym) = SparseArrays.findnz(∇ₓₓg_sym)
-    ∇ₓₓg_vals! = Symbolics.build_function(∇ₓₓg_vals_sym, x_sym; expression=Val{false})[2]
-
-    funs = (;
+        np,
+        # follower NLP: min f(x) s.t. g(x) ≥ 0
+        g!,
+        ∇ₓ₂f!,
+        # ∇ₓ₂g
+        ∇ₓ₂g_size,
+        ∇ₓ₂g_rows,
+        ∇ₓ₂g_cols,
+        ∇ₓ₂g_vals!,
+        # ∇²ₓ₂L₂, L₂ = f(x) - λ' g(x)
+        ∇²ₓ₂L₂_size,
+        ∇²ₓ₂L₂_rows,
+        ∇²ₓ₂L₂_cols,
+        ∇²ₓ₂L₂_vals!,
+        # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
+        zl₀,
+        zu₀,
+        h!,
+        # ∇_z h
+        ∇h_size,
+        ∇h_rows,
+        ∇h_cols,
+        ∇h_vals!,
+        # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
+        Fv,
+        Γ!,
+        ∇ᵥF!,
+        # ∇ᵥΓ
+        ∇ᵥΓ_size,
+        ∇ᵥΓ_rows,
+        ∇ᵥΓ_cols,
+        ∇ᵥΓ_vals!,
+        # ∇²ᵥL₁, L₁ = F(v) - Λ' Γ(v)
+        ∇²ᵥL₁_size,
+        ∇²ᵥL₁_rows,
+        ∇²ᵥL₁_cols,
+        ∇²ᵥL₁_vals!,
+        # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+        θl₀,
+        θu₀,
+        Φ!,
+        # ∇_θ Φ
+        ∇Φ_size,
+        ∇Φ_rows,
+        ∇Φ_cols,
+        ∇Φ_vals!,
+        # high-point NLP: min F(x) s.t. [G(x); g(x)] ≥ 0
+        Gg!,
         ∇ₓF!,
-        ∇ₓf!,
-        ∇ₓG_rows,
-        ∇ₓG_cols,
-        ∇ₓG_vals!,
-        ∇ₓg_rows,
-        ∇ₓg_cols,
-        ∇ₓg_vals!,
-        ∇ₓₓF_rows,
-        ∇ₓₓF_cols,
-        ∇ₓₓF_vals!,
-        ∇ₓₓf_rows,
-        ∇ₓₓf_cols,
-        ∇ₓₓf_vals!,
-        ∇ₓₓG_rows,
-        ∇ₓₓG_cols,
-        ∇ₓₓG_vals!,
-        ∇ₓₓg_rows,
-        ∇ₓₓg_cols,
-        ∇ₓₓg_vals!
+        # ∇ₓGg
+        ∇ₓGg_size,
+        ∇ₓGg_rows,
+        ∇ₓGg_cols,
+        ∇ₓGg_vals!,
+        # ∇²ₓL₃, L₃ = F(x) - Λ₃' Gg(x)
+        ∇²ₓL₃_size,
+        ∇²ₓL₃_rows,
+        ∇²ₓL₃_cols,
+        ∇²ₓL₃_vals!,
+        # for convenience
+        x_inds,
+        z_inds,
+        v_inds,
+        Γ_inds,
+        θ_inds
     )
-    syms = (;
-        F=F_sym,
-        f=f_sym,
-        G=G_sym,
-        g=g_sym,
-        ∇ₓF=∇ₓF_sym,
-        ∇ₓf=∇ₓf_sym,
-        ∇ₓG=∇ₓG_sym,
-        ∇ₓg=∇ₓg_sym,
-        ∇ₓₓF=∇ₓₓF_sym,
-        ∇ₓₓf=∇ₓₓf_sym,
-        ∇ₓₓG=∇ₓₓG_sym,
-        ∇ₓₓg=∇ₓₓg_sym,
-    )
-    (funs, syms)
 end
