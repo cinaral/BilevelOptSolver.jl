@@ -179,20 +179,21 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     ∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals_sym, xp_sym; expression=Val{false})[2]
 
     # ∇²ₓ₂L₂, L₂ =  of f(x) - λ' g(x)
-    of_sym = Symbolics.@variables(of)[1] # objective factor
+    of₂_sym = Symbolics.@variables(of2)[1] # objective factor
     if isempty(λ_sym)
-        L₂_sym = of_sym * f_sym
+        L₂_sym = of₂_sym * f_sym
     else
-        L₂_sym = of_sym * f_sym - g_sym' * λ_sym
+        L₂_sym = of₂_sym * f_sym - g_sym' * λ_sym
     end
     ∇ₓ₂L₂_sym = Symbolics.gradient(L₂_sym, x2_sym)
     ∇²ₓ₂L₂_size = size(∇ₓ₂L₂_sym)
     ∇²ₓ₂L₂_sym = Symbolics.sparsejacobian(∇ₓ₂L₂_sym, x2_sym)
     (∇²ₓ₂L₂_rows, ∇²ₓ₂L₂_cols, ∇²ₓ₂L₂_vals_sym) = SparseArrays.findnz(∇²ₓ₂L₂_sym)
-    ∇²ₓ₂L₂_vals! = Symbolics.build_function(∇²ₓ₂L₂_vals_sym, xp_sym, λ_sym, of_sym; expression=Val{false})[2]
+    ∇²ₓ₂L₂_vals! = Symbolics.build_function(∇²ₓ₂L₂_vals_sym, xp_sym, λ_sym, of₂_sym; expression=Val{false})[2]
 
     # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
     # by default x₂ is free and λ ≥ 0, but these will be overwritten later
+    ∇ₓ₂L₂_sym = substitute(∇ₓ₂L₂_sym, Dict([of₂_sym=>1.]))
     zl₀ = [fill(-Inf, n2); zeros(m2)] # default z lb
     zu₀ = fill(Inf, nz) # default z ub
     if nz > 0
@@ -203,13 +204,13 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     @assert(nz == length(zl₀))
     @assert(nz == length(zu₀))
     @assert(nz == length(h_sym))
-    h! = Symbolics.build_function(h_sym, vp_sym, of_sym; expression=Val(false))[2]
+    h! = Symbolics.build_function(h_sym, vp_sym; expression=Val(false))[2]
 
     # ∇_z h
     ∇h_sym = Symbolics.sparsejacobian(h_sym, z_sym) # Jacobian of F for the PATH solver
     ∇h_size = size(∇h_sym)
     (∇h_rows, ∇h_cols, ∇h_vals_sym) = SparseArrays.findnz(∇h_sym)
-    ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym, of_sym; expression=Val{false})[2]
+    ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym; expression=Val{false})[2]
 
     # SBOP NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
     Γ_sym = [G_sym; h_sym; -h_sym; z_sym; -z_sym]
@@ -227,17 +228,17 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
 
     # ∇²ᵥL₁, L₁ = F(v) - Λ' Γ(v)
     Λ_sym = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
+    of₁_sym = Symbolics.@variables(of1)[1] # objective factor
     if isempty(λ_sym)
-        L₁_sym = of_sym * F_sym
+        L₁_sym = of₁_sym * F_sym
     else
-        L₁_sym = of_sym * F_sym - Γ_sym' * Λ_sym
+        L₁_sym = of₁_sym * F_sym - Γ_sym' * Λ_sym
     end
-
     ∇ᵥL₁_sym = Symbolics.gradient(L₁_sym, v_sym)
     ∇²ᵥL₁_sym = Symbolics.sparsejacobian(∇ᵥL₁_sym, v_sym)
     ∇²ᵥL₁_size = size(∇²ᵥL₁_sym)
     (∇²ᵥL₁_rows, ∇²ᵥL₁_cols, ∇²ᵥL₁_vals_sym) = SparseArrays.findnz(∇²ᵥL₁_sym)
-    ∇²ᵥL₁_vals! = Symbolics.build_function(∇²ᵥL₁_vals_sym, vp_sym, Λ_sym, of_sym; expression=Val{false})[2]
+    ∇²ᵥL₁_vals! = Symbolics.build_function(∇²ᵥL₁_vals_sym, vp_sym, Λ_sym, of₁_sym; expression=Val{false})[2]
 
     # SBOP MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
     # by default v is free and Λ ≥ 0, but these will be overwritten later
@@ -248,6 +249,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     θl₀[θ_inds["Λhl"]] .= zl₀
     θu₀ = fill(Inf, nθ) # default θ ub
     θu₀[θ_inds["Λhu"]] .= zu₀
+    ∇ᵥL₁_sym = substitute(∇ᵥL₁_sym, Dict([of₁_sym=>1.]))
     Φ_sym = [∇ᵥL₁_sym; Γ_sym]
     Φ! = Symbolics.build_function(Φ_sym, θp_sym; expression=Val(false))[2]
     ∇Φ_sym = Symbolics.sparsejacobian(Φ_sym, θ_sym)
@@ -269,16 +271,17 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
 
     # ∇²ₓL₃, L₃ = F(x) - Λ₃' Gg(x)
     Λ₃_sym = Symbolics.@variables(Λ[1:m1+m2])[1] |> Symbolics.scalarize
+    of₃_sym = Symbolics.@variables(of3)[1] # objective factor
     if isempty(Λ₃_sym)
-        L₃_sym = of_sym * F_sym
+        L₃_sym = of₃_sym * F_sym
     else
-        L₃_sym = of_sym * F_sym - Gg_sym' * Λ₃_sym
+        L₃_sym = of₃_sym * F_sym - Gg_sym' * Λ₃_sym
     end
     ∇ₓL₃_sym = Symbolics.gradient(L₃_sym, x_sym)
     ∇²ₓL_sym = Symbolics.sparsejacobian(∇ₓL₃_sym, x_sym)
     ∇²ₓL₃_size = size(∇²ₓL_sym)
     (∇²ₓL₃_rows, ∇²ₓL₃_cols, ∇²ₓL₃_vals_sym) = SparseArrays.findnz(∇²ₓL_sym)
-    ∇²ₓL₃_vals! = Symbolics.build_function(∇²ₓL₃_vals_sym, xp_sym, Λ₃_sym, of_sym; expression=Val{false})[2]
+    ∇²ₓL₃_vals! = Symbolics.build_function(∇²ₓL₃_vals_sym, xp_sym, Λ₃_sym, of₃_sym; expression=Val{false})[2]
 
     BilevelOptProb(
         F,

@@ -702,29 +702,31 @@ is_minimizing = false: BOPᵢ KKT is solved as an MCP
 is_minimizing = true: BOPᵢ is solved as an NLP
 is_using_HSL = true: Use HSL LP solver back-end when solving the NLP
 """
-function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; is_minimizing=false, is_using_HSL=false, tol=1e-6)
+function update_vΛ!(v, Λ, Ghs_l, Ghs_u, θ_l, θ_u, θ_init, bop, Ji_bounds; solver="IPOPT", tol=1e-6, max_iter=1000)
     is_vΛ_valid::Bool = false
-    update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
+    #update_bounds!(Ghs_l, Ghs_u, θ_l, θ_u, bop, Ji_bounds)
 
-    if is_minimizing
-        v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
-        is_vΛ_valid = solvestat == 0 #|| solvestat == 1
-        if is_vΛ_valid
-            v .= v_out # even if it's not solved, we update v so we can try to initialize z again
-            Λ .= Λ_out
-        end
-    else
-        θ_init[bop.θ_inds["v"]] .= v
-        θ_init[bop.θ_inds["Λ"]] .= Λ[1:bop.m1+bop.mh]
-        θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol, is_silent=true, verbosity=10)
-        v_out = θ_out[bop.θ_inds["v"]]
-        Λ_out = θ_out[bop.θ_inds["Λ"]]
-        is_vΛ_valid = status == PATHSolver.MCP_Solved
-        if is_vΛ_valid
-            v .= v_out # even if it's not solved, we update v so we can try to initialize z again
-            Λ .= [Λ_out; zeros(bop.m2)]
-        end
-    end
+    v, Λ, success = solve_SBOP_nlp(bop, Ji_bounds.hl, Ji_bounds.hu, Ji_bounds.zu, Ji_bounds.zl; x_init=zeros(bop.nx), solver, tol, max_iter)
+
+    #if is_minimizing
+    #    v_out, Λ_out, solvestat = bop.solve_BOPᵢ_nlp(g_l=Ghs_l, g_u=Ghs_u, x_init=v, λ_init=Λ; is_using_HSL, tol)
+    #    is_vΛ_valid = solvestat == 0 #|| solvestat == 1
+    #    if is_vΛ_valid
+    #        v .= v_out # even if it's not solved, we update v so we can try to initialize z again
+    #        Λ .= Λ_out
+    #    end
+    #else
+    #    θ_init[bop.θ_inds["v"]] .= v
+    #    θ_init[bop.θ_inds["Λ"]] .= Λ[1:bop.m1+bop.mh]
+    #    θ_out, status, _ = bop.solve_BOPᵢ_KKT_mcp(x_l=θ_l, x_u=θ_u, x_init=θ_init; tol, is_silent=true, verbosity=10)
+    #    v_out = θ_out[bop.θ_inds["v"]]
+    #    Λ_out = θ_out[bop.θ_inds["Λ"]]
+    #    is_vΛ_valid = status == PATHSolver.MCP_Solved
+    #    if is_vΛ_valid
+    #        v .= v_out # even if it's not solved, we update v so we can try to initialize z again
+    #        Λ .= [Λ_out; zeros(bop.m2)]
+    #    end
+    #end
     is_vΛ_valid
 end
 
@@ -870,6 +872,7 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=
     x[bop.x_inds["x1"]] .= x1
     λ = zeros(bop.m2)
     success = false
+
     if solver == "IPOPT"
         x2_l = fill(-Inf, bop.n2)
         x2_u = fill(Inf, bop.n2)
@@ -899,125 +902,90 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=
         solve = setup_nlp_solve_IPOPT(bop.n2, bop.m2, x2_l, x2_u, gl, gu, eval_f, eval_g, eval_∇ₓ₂f, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, eval_∇ₓ₂g_vals, bop.∇²ₓ₂L₂_rows, bop.∇²ₓ₂L₂_cols, eval_∇²ₓ₂L₂_vals)
 
         x_out, λ_out, solvestat, _ = solve(; x_init=x2_init, tol, max_iter, print_level=0)
-        x[bop.x_inds["x2"]] .= x_out;
-        λ .= λ_out;
-        success = solvestat == 0
-    else
-        solver == "PATH"
+        x[bop.x_inds["x2"]] .= x_out
+        λ .= λ_out
+        success = solvestat == 0 # || solvestat == 1
+
+    elseif solver == "PATH"
         v = zeros(bop.n)
         v[bop.v_inds["x"]] .= x
-        z_init = zeros(bop.nz);
+        z_init = zeros(bop.nz)
         z_init[bop.z_inds["x2"]] = x2_init
 
         function eval_F!(h, z::Vector{Float64})
             v[bop.v_inds["z"]] .= z
-            bop.h!(h, v, 1.)
+            bop.h!(h, v, 1.0)
         end
         function eval_J_vals!(∇h, z::Vector{Float64})
             v[bop.v_inds["z"]] .= z
-            bop.∇h_vals!(∇h, v, 1.)
+            bop.∇h_vals!(∇h, v, 1.0)
         end
         solve = setup_mcp_solve_PATH(bop.nz, bop.zl₀, bop.zu₀, eval_F!, bop.∇h_rows, bop.∇h_cols, eval_J_vals!)
 
         z_out, status, _ = solve(; x_init=z_init, tol, max_iter, is_silent=true)
-        x[bop.x_inds["x2"]] .= z_out[bop.z_inds["x2"]];
-        λ .= z_out[bop.z_inds["λ"]];
+        x[bop.x_inds["x2"]] .= z_out[bop.z_inds["x2"]]
+        λ .= z_out[bop.z_inds["λ"]]
         success = status == PATHSolver.MCP_Solved
     end
 
     (; x, λ, success)
 end
 
-function setup_follower_KKT_mcp(n1, n2, m2, x1_sym, x2_sym, λ_sym, s_sym, f_sym, g_sym, z_inds)
-    z_sym = [x2_sym; λ_sym; s_sym]
-    n_z = length(z_sym)
-    z_l = fill(-Inf, n_z)
-    z_u = fill(Inf, n_z)
-    #θ_l[θ_inds["λ"]] .= 0.0
-    z_l[z_inds["s"]] .= 0.0
+# 2025-07-10 in order to reduce allocations we could do...
+#function setup_SBOP_nlp_IPOPT()
+#end
 
-    if isempty(λ_sym)
-        L = f_sym
-    else
-        L = f_sym - g_sym' * λ_sym
+#function setup_SBOP_nlp_PATH()
+#end
+
+function solve_SBOP_nlp(bop, hl, hu, zu, zl; x_init=zeros(bop.nx), solver="IPOPT", tol=1e-6, max_iter=1000)
+    v = zeros(bop.n)
+    v[bop.v_inds["x"]] .= x_init
+    Λ = zeros(bop.m)
+    success = false
+
+    if solver == "IPOPT"
+        vl = fill(-Inf, bop.n)
+        vu = fill(Inf, bop.n)
+        Γl = fill(0.0, bop.m)
+        Γl[bop.Γ_inds["hl"]] .= hl
+        Γl[bop.Γ_inds["hu"]] .= hu
+        Γl[bop.Γ_inds["zl"]] .= zl
+        Γl[bop.Γ_inds["zu"]] .= zu
+        Γu₀ = fill(Inf, bop.m) # doesn't change
+
+        solve = setup_nlp_solve_IPOPT(bop.n, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL₁_rows, bop.∇²ᵥL₁_cols, bop.∇²ᵥL₁_vals!)
+
+        v_out, Λ_out, solvestat, _ = solve(; gl=Γl, x_init=v, λ_init=Λ, tol, max_iter, print_level=0)
+        success = solvestat == 0 # || solvestat == 1
+
+    elseif solver == "PATH"
+        θ_init = zeros(bop.nθ)
+        θ_init[bop.θ_inds["v"]] .= v
+        θ_init[bop.θ_inds["Λ"]] .= Λ
+        θl = copy(bop.θl₀)
+        θl[bop.θ_inds["Λhl"]] .= zl
+        θl[bop.θ_inds["Λzl"]] .= hl
+        θu = copy(bop.θl₀)
+        θu[bop.θ_inds["Λhl"]] .= zu
+        θu[bop.θ_inds["Λzl"]] .= hu
+
+        solve = setup_mcp_solve_PATH(bop.nθ, θl, θu, bop.Φ!, bop.∇Φ_rows, bop.∇Φ_cols, bop.∇Φ_vals!)
+
+        θ_out, status, _ = solve(; xl=θl, xu=θl, x_init=θ_init, tol, is_silent=true)
+        v_out = θ_out[bop.θ_inds["v"]]
+        Λ_out = θ_out[bop.θ_inds["Λ"]]
+        success = status == PATHSolver.MCP_Solved
     end
-
-    g_s_sym = g_sym .- s_sym
-
-    ∇ₓ₂L_sym = Symbolics.gradient(L, x2_sym)
-    PF_sym = [∇ₓ₂L_sym; g_s_sym; λ_sym] # P(ATH)F function for the PATH solver, not to be confused with leader's cost
-
-    x1_z_sym = [x1_sym; x2_sym; λ_sym; s_sym]
-    PF! = Symbolics.build_function(PF_sym, x1_z_sym; expression=Val(false))[2]
-    PJ_sym = Symbolics.sparsejacobian(PF_sym, z_sym) # Jacobian of F for the PATH solver
-
-    (PJ_rows, PJ_cols, PJ_vals_sym) = SparseArrays.findnz(PJ_sym)
-    PJ_vals! = Symbolics.build_function(PJ_vals_sym, x1_z_sym; expression=Val{false})[2]
-
-    function solve_follower_KKT_mcp(x1; z_init=zeros(n_z), tol=1e-6, max_iter=1000, is_silent=true)
-        x1_z = zeros(length(x1_z_sym))
-        x1_z[1:n1] .= x1
-        z_inds = n1+1:n1+n2+2*m2
-
-        function eval_PF!(F, z::Vector{Float64})
-            x1_z[z_inds] .= z
-            PF!(F, x1_z)
-        end
-
-        function eval_PJ_vals!(J_vals, z::Vector{Float64})
-            x1_z[z_inds] .= z
-            PJ_vals!(J_vals, x1_z)
-        end
-
-        solve = setup_mcp_solve_PATH(n_z, z_l, z_u, eval_PF!, PJ_rows, PJ_cols, eval_PJ_vals!)
-        solve(; x_init=z_init, tol, max_iter, is_silent)
-    end
+    (v, Λ, success)
 end
+
+
+
 
 ### unused 2025-07-10
 
 
-
-
-
-function setup_BOPᵢ_nlp(nv, mΛ, Ghs_l₀, Ghs_u₀, v_sym, F_sym, Ghs_sym)
-    v_l₀ = fill(-Inf, nv)
-    v_u₀ = fill(Inf, nv)
-    F = Symbolics.build_function(F_sym, v_sym; expression=Val{false})
-
-    Ghs! = Symbolics.build_function(Ghs_sym, v_sym; expression=Val{false})[2]
-
-    ∇ᵥF_sym = Symbolics.gradient(F_sym, v_sym)
-    ∇ᵥF! = Symbolics.build_function(∇ᵥF_sym, v_sym; expression=Val{false})[2]
-
-    ∇ᵥGhs_sym = Symbolics.sparsejacobian(Ghs_sym, v_sym)
-    (∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals_sym) = SparseArrays.findnz(∇ᵥGhs_sym)
-    ∇ᵥGhs_vals! = Symbolics.build_function(∇ᵥGhs_vals_sym, v_sym; expression=Val{false})[2]
-
-    Λ_sym = Symbolics.@variables(lamb[1:mΛ])[1] |> Symbolics.scalarize
-    obj_factor = Symbolics.@variables(of)[1]
-    L_sym = obj_factor * F_sym + Ghs_sym' * Λ_sym # WARN: IPOPT convention: ∇ᵥᵥF(v) + Λᵀ ∇ᵥᵥ[G(v); h(v)]
-    ∇ᵥL_sym = Symbolics.gradient(L_sym, v_sym)
-    ∇ᵥᵥL_sym = Symbolics.sparsejacobian(∇ᵥL_sym, v_sym)
-    (∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_vals_sym) = SparseArrays.findnz(∇ᵥᵥL_sym)
-    ∇ᵥᵥL_vals! = Symbolics.build_function(∇ᵥᵥL_vals_sym, v_sym, obj_factor, Λ_sym; expression=Val{false})[2]
-
-    solve = setup_nlp_solve_IPOPT(nv, mΛ, v_l₀, v_u₀, Ghs_l₀, Ghs_u₀, F, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_vals!)
-
-    # used to verify solutions
-    function info()
-        (; ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_shape=size(∇ᵥGhs_sym), ∇ᵥᵥL_rows, ∇ᵥᵥL_cols, ∇ᵥᵥL_shape=size(∇ᵥᵥL_sym))
-    end
-
-    function eval!(Ghs, ∇ᵥF, ∇ᵥGh_vals, ∇ᵥᵥL_vals, v, Λ)
-        Ghs!(Ghs, v)
-        ∇ᵥF!(∇ᵥF, v)
-        ∇ᵥGhs_vals!(∇ᵥGh_vals, v)
-        ∇ᵥᵥL_vals!(∇ᵥᵥL_vals, v, 1.0, Λ)
-    end
-
-    (; solve, info, eval!, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥGhs_cols, ∇ᵥGhs_vals!, ∇ᵥGhs_shape=size(∇ᵥGhs_sym))
-end
 
 """
 ```
@@ -1065,18 +1033,3 @@ function setup_check_Λ_lp_feas(nv, mΛ, Ghs!, ∇ᵥF!, ∇ᵥGhs_rows, ∇ᵥG
 end
 
 
-function setup_BOPᵢ_KKT_mcp(nθ, m1, mh, θ_l₀, θ_u₀, F_sym, Gh_sym, v_sym, θ_sym, Λ_sym, r_sym)
-    L = F_sym - Gh_sym' * Λ_sym
-    ∇ᵥL_sym = Symbolics.gradient(L, v_sym)
-    Gh_r_sym = Gh_sym .- r_sym
-    # F ⟂ θ = [v_sym; Λ_sym; r_sym] 
-    PF_sym = [∇ᵥL_sym; Gh_r_sym; Λ_sym]
-
-    PF! = Symbolics.build_function(PF_sym, θ_sym; expression=Val(false))[2]
-    PJ = Symbolics.sparsejacobian(PF_sym, θ_sym)
-
-    (PJ_rows, PJ_cols, PJ_vals) = SparseArrays.findnz(PJ)
-    PJ_vals! = Symbolics.build_function(PJ_vals, θ_sym; expression=Val{false})[2]
-
-    setup_mcp_solve_PATH(nθ, θ_l₀, θ_u₀, PF!, PJ_rows, PJ_cols, PJ_vals!)
-end
