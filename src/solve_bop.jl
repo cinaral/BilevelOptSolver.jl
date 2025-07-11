@@ -31,13 +31,15 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
     ## restart stuff
     fol_feas_set_tol = copy(tol)
 
-    # convergence stuff
+    # convergence stuff 
+    is_sol_valid = false
     is_prev_v_set = false
     is_norm_dv_full = false
     norm_dv_arr = zeros(norm_dv_len)
     chron_norm_dv_arr = copy(norm_dv_arr)
     norm_dv_cur_idx = 1
     prev_iter_v = zeros(bop.n)
+
 
     while !is_converged
         if iter_count >= max_iter
@@ -55,8 +57,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
         if !is_initialized
             is_initialized = initialize_z!(v, bop; verbosity, init_solver, tol)
 
-            if !is_initialized && verbosity > 0
-                print("Iteration $iter_count: Failed to (re)initialize!\n")
+            if !is_initialized
+                if verbosity > 0
+                    print("Iteration $iter_count: Failed to (re)initialize!\n")
+                end
                 status = "init_fail"
                 break
             end
@@ -100,7 +104,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             status = "max_tol_relax"
             break
         end
-        
+
         fol_feas_set_tol = tol # reset fol_feas_set_tol
 
         if n_J > 1 && verbosity > 1
@@ -158,7 +162,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
         end
 
         if length(vΛ_J_inds) == 0
-            Main.@infiltrate
+            #Main.@infiltrate
             if verbosity > 1
                 print("Failed to find any valid solutions!\n")
             end
@@ -385,6 +389,7 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=
         solve = setup_nlp_solve_IPOPT(bop.n2, bop.m2, x2_l, x2_u, gl, gu, eval_f, eval_g, eval_∇ₓ₂f, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, eval_∇ₓ₂g_vals, bop.∇²ₓ₂L₂_rows, bop.∇²ₓ₂L₂_cols, eval_∇²ₓ₂L₂_vals)
 
         x_out, λ_out, solvestat, _ = solve(; x_init=x2_init, tol, max_iter, print_level=0)
+
         x[bop.x_inds["x2"]] .= x_out
         λ .= λ_out
         success = solvestat == 0 # || solvestat == 1
@@ -406,6 +411,7 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=
         solve = setup_mcp_solve_PATH(bop.nz, bop.zl₀, bop.zu₀, eval_F!, bop.∇h_rows, bop.∇h_cols, eval_J_vals!)
 
         z_out, status, _ = solve(; x_init=z_init, tol, max_iter, is_silent=true)
+
         x[bop.x_inds["x2"]] .= z_out[bop.z_inds["x2"]]
         λ .= z_out[bop.z_inds["λ"]]
         success = status == PATHSolver.MCP_Solved
@@ -507,14 +513,14 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
                         w[k] = -offset / ∇ₓg[j, k]
                     end
 
-                    if all(isapprox.(w, 0; atol=2 * tol)) || !isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)
-                        #Main.@infiltrate
+                    if !isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)
+                        Main.@infiltrate
                     end
                     # sanity checks, there might be a smarter way to get the tangent cone 
-                    @assert(!all(isapprox.(w, 0; atol=2 * tol))) # w ≠ 0
                     @assert(isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
 
-                    if isapprox(λ[j], 0; atol=2 * tol) || w' * ∇²ₓL * w ≤ 0.0  # w' * ∇²ₓL * w > 0 condition is strict
+                    # w ≠ 0 && λ ≠ 0 && w' * ∇²ₓL * w > 0 
+                    if all(isapprox.(w, 0; atol=2 * tol)) || isapprox(λ[j], 0; atol=2 * tol) || w' * ∇²ₓL * w ≤ 0.0 
                         is_sufficient = false
                     end
                 end
