@@ -5,7 +5,7 @@ using CSV
 include("../src/BOLIB_utils.jl")
 
 #@info "is_checking_min FALSE"
-res = run_all_BOLIB_examples(; verbosity=0, max_iter=100, tol=1e-6, is_checking_min=true, conv_dv_len=1, init_solver="PATH", solver="PATH");
+res = run_all_BOLIB_examples(; verbosity=0, max_iter=100, tol=1e-7, is_checking_min=true, conv_dv_len=1, init_solver="IPOPT", solver="IPOPT");
 CSV.write("BOLIB_results.csv", res.df)
 
 #@info "is_checking_min TRUE"

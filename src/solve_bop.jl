@@ -120,9 +120,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             Ji = follow_feas_Js[i]
             hl, hu, zl, zu = convert_J_to_h_z_bounds(Ji, bop)
 
-            is_solved = solve_SBOPi_nlp!(v, Λ, bop, hl, hu, zu, zl; solver, tol)
+            is_solved = solve_SBOPi_nlp!(v, Λ, bop, hl, hu, zl, zu; solver, tol)
 
             is_valid = false
+
             if is_solved
                 #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl)
                 #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
@@ -200,6 +201,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
 
         F = Inf
         for (i, _) in enumerate(v_arr)
+            #is_necessary, is_sufficient = check_follower_sol(v_arr[i], bop)
+            #@info "$is_necessary, $is_sufficient"
             F_ = bop.F(v_arr[i][bop.v_inds["x"]])   # choose the smallest available F value
 
             if F_ < F
@@ -431,7 +434,7 @@ end
 #function setup_SBOP_nlp_PATH()
 #end
 
-function solve_SBOPi_nlp!(v, Λ, bop, hl, hu, zu, zl; solver="IPOPT", tol=1e-6, max_iter=1000)
+function solve_SBOPi_nlp!(v, Λ, bop, hl, hu, zl, zu; solver="IPOPT", tol=1e-6, max_iter=1000)
     #v = zeros(bop.n)
     #v[bop.v_inds["x"]] .= x_init
     #Λ = zeros(bop.m)
@@ -649,7 +652,7 @@ function convert_J_to_h_z_bounds(J, bop; tol=1e-6)
     zu₀ = bop.zu₀
 
     for j in J[1] # hⱼ inactive (strictly positive), zⱼ at lb
-        hl[j] = tol
+        hl[j] = 0.0
         hu[j] = Inf
         zl[j] = zl₀[j]
         zu[j] = zl₀[j]
@@ -657,12 +660,12 @@ function convert_J_to_h_z_bounds(J, bop; tol=1e-6)
     for j in J[2] # hⱼ active (l ≠ u)
         hl[j] = 0.0
         hu[j] = 0.0
-        zl[j] = zl₀[j] + tol
+        zl[j] = zl₀[j]
         zu[j] = zu₀[j]
     end
     for j in J[3] # hⱼ inactive (strictly negative), zⱼ at ub
         hl[j] = -Inf
-        hu[j] = -tol
+        hu[j] = 0.0
         zl[j] = zu₀[j]
         zu[j] = zu₀[j]
     end
