@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x_agree_tol=1e-3, max_iter=10, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=true)
+function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=10, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=true)
     status = "ok"
 
     # buffer
@@ -27,6 +27,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
     iter_count = 0
     is_converged = false
     is_initialized = false
+
+    ## restart stuff
+    fol_feas_set_tol = copy(tol)
 
     # convergence stuff
     is_prev_v_set = false
@@ -65,15 +68,40 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
             display(v)
         end
 
-        # TODO: add back relaxations since fol_feas_set_tol is difficult to choose
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity)
+
         n_J = length(follow_feas_Js)
 
         if n_J == 0
             if verbosity > 1
                 print("Could not compute follower's feasible sets despite satisfying follower's KKT! Maybe it's a tolerance issue?\n")
             end
+            tol_restart_count = 1
+
+            while length(follow_feas_Js) < 1
+                fol_feas_set_tol = 10^(tol_restart_count) * tol
+
+                if fol_feas_set_tol > fol_feas_set_tol_max
+                    if verbosity > 1
+                        print("Reached max follow set tol relaxations!\n")
+                    end
+                    fol_feas_set_tol = fol_feas_set_tol_max
+                end
+                if verbosity > 1
+                    print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
+                end
+                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
+                tol_restart_count += 1
+            end
         end
+
+        n_J = length(follow_feas_Js)
+        if n_J == 0
+            status = "max_tol_relax"
+            break
+        end
+        
+        fol_feas_set_tol = tol # reset fol_feas_set_tol
 
         if n_J > 1 && verbosity > 1
             print("Multiple feasible sets ($n_J) detected!\n")
@@ -106,7 +134,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
                 push!(vΛ_J_inds, i)
                 push!(v_arr, copy(v))
                 push!(Λ_arr, copy(Λ))
-              
+
                 if verbosity > 2
                     print("i=$i: Valid J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
                 end
@@ -130,6 +158,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
         end
 
         if length(vΛ_J_inds) == 0
+            Main.@infiltrate
             if verbosity > 1
                 print("Failed to find any valid solutions!\n")
             end
@@ -181,7 +210,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
             else
                 is_initialized = is_necessary
             end
-           
+
             if !is_initialized
                 if verbosity > 0
                     print("Iteration $iter_count: Follower is not at minimum, we must initialize again!\n")
@@ -466,33 +495,32 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         act_inds = isapprox.(g, 0; atol=2 * tol)
         #act_inds = all(λ .≥ 0 + tol) # strictly active indices??
         if any(act_inds)
-            for i in findall(act_inds .> 0)
-                for j in 1:n
-                    if isapprox(∇ₓg[i, j], 0; atol=2 * tol)
+            for j in findall(act_inds .> 0)
+                for k in 1:n
+                    if isapprox(∇ₓg[j, k], 0; atol=2 * tol)
                         w = zeros(n)
-                        w[j] = 1.0
+                        w[k] = 1.0
                     else
                         w = ones(n)
-                        w[j] = 0.0
-                        offset = w' * ∇ₓg[i, :]
-                        w[j] = -offset / ∇ₓg[i, j]
+                        w[k] = 0.0
+                        offset = w' * ∇ₓg[j, :]
+                        w[k] = -offset / ∇ₓg[j, k]
                     end
 
+                    if all(isapprox.(w, 0; atol=2 * tol)) || !isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)
+                        #Main.@infiltrate
+                    end
                     # sanity checks, there might be a smarter way to get the tangent cone 
+                    @assert(!all(isapprox.(w, 0; atol=2 * tol))) # w ≠ 0
+                    @assert(isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
 
-                    if all(isapprox.(w, 0; atol=2 * tol)) && isapprox.(w' * ∇ₓg[i, :], 0; atol=2 * tol)
+                    if isapprox(λ[j], 0; atol=2 * tol) || w' * ∇²ₓL * w ≤ 0.0  # w' * ∇²ₓL * w > 0 condition is strict
                         is_sufficient = false
-                    else
-                        @assert(isapprox.(w' * ∇ₓg[i, :], 0; atol=2 * tol))
-                        if w' * ∇²ₓL * w ≤ 0 # is semipositive definite is ok?
-                            is_sufficient = false
-                        end
                     end
-
                 end
             end
         else
-            # unconstrained problem
+            # if there are no active indices this is the unconstrained problem
             is_sufficient = isposdef(∇²ₓL)
         end
     else
@@ -602,7 +630,7 @@ function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0)
     Js
 end
 
-function convert_J_to_h_z_bounds(J, bop)
+function convert_J_to_h_z_bounds(J, bop; tol=1e-6)
     hl = zeros(bop.nz)
     hu = zeros(bop.nz)
     zl = zeros(bop.nz)
@@ -610,8 +638,8 @@ function convert_J_to_h_z_bounds(J, bop)
     zl₀ = bop.zl₀
     zu₀ = bop.zu₀
 
-    for j in J[1] # hⱼ inactive (positive), zⱼ at lb
-        hl[j] = 0.0
+    for j in J[1] # hⱼ inactive (strictly positive), zⱼ at lb
+        hl[j] = tol
         hu[j] = Inf
         zl[j] = zl₀[j]
         zu[j] = zl₀[j]
@@ -619,12 +647,12 @@ function convert_J_to_h_z_bounds(J, bop)
     for j in J[2] # hⱼ active (l ≠ u)
         hl[j] = 0.0
         hu[j] = 0.0
-        zl[j] = zl₀[j]
+        zl[j] = zl₀[j] + tol
         zu[j] = zu₀[j]
     end
-    for j in J[3] # hⱼ inactive (negative), zⱼ at ub
+    for j in J[3] # hⱼ inactive (strictly negative), zⱼ at ub
         hl[j] = -Inf
-        hu[j] = 0.0
+        hu[j] = -tol
         zl[j] = zu₀[j]
         zu[j] = zu₀[j]
     end
