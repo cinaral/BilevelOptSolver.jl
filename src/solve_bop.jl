@@ -90,6 +90,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                         print("Reached max follow set tol relaxations!\n")
                     end
                     fol_feas_set_tol = fol_feas_set_tol_max
+                    break
                 end
                 if verbosity > 1
                     print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
@@ -134,6 +135,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                 end
             end
 
+            #Main.@infiltrate
             if is_valid
                 push!(vΛ_J_inds, i)
                 push!(v_arr, copy(v))
@@ -321,10 +323,12 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
         if verbosity > 0
             print("Resetting x to a bilevel feasible point using high-point relaxation...\n")
         end
-        x, λ, is_x_feasible = solve_high_point_nlp(bop; x_init=zeros(bop.nx), tol=1e-6, max_iter=1000)
+        x, λ, is_x_feasible = solve_high_point_nlp(bop; x_init=x, tol=1e-6, max_iter=1000)
+        x1 = @view x[bop.x_inds["x1"]]
+        x2 = @view x[bop.x_inds["x2"]]
 
         if is_x_feasible # we try again
-            (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver=init_solver, tol)
+            (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol)
         else
             if verbosity > 0
                 print("Failed resetting x to a bilevel feasible point, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
@@ -514,7 +518,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
                     end
 
                     if !isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)
-                        Main.@infiltrate
+                        #Main.@infiltrate
                     end
                     # sanity checks, there might be a smarter way to get the tangent cone 
                     @assert(isapprox(w' * ∇ₓg[j, :], 0; atol=2 * tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
