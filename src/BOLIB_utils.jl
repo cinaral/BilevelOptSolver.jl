@@ -7,7 +7,7 @@ import BOLIB
 
 using DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false, is_checking_x_agree=false, is_using_PATH_to_init=false, tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree=false, init_solver="PATH", solver="PATH", tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -16,7 +16,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
     bops = []
     prob_names = []
     x_out_arr = Vector{Float64}[]
-    status_arr = Int64[]
+    status_arr = []
     success_arr = Bool[]
     iter_counts = Int64[]
     elapsed_arr = Float64[]
@@ -41,11 +41,11 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_using_HSL, is_checking_x_agree, is_using_PATH_to_init, tol, norm_dv_len, conv_dv_len, is_checking_min)
+            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
         end
 
         is_optimal, is_best, Ff, Ff_star, rating, is_wrong = rate_BOLIB_result(p, bop, x)
-        success = status ≥ 0
+        success = status == "ok"
 
         if is_wrong
             success = false
@@ -61,14 +61,14 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_using_HSL=false,
 
         # print iter info
         if prob_count % 20 == 0
-            print("id name: [status], iters (elapsed s): rating, x -> Ff (Ff*), result\n")
+            print("id name: [status], iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
         end
         print("$(prob_count+1)\t $prob:\t ")
 
-        if !success
-            rating = "FAIL"
-        end
-        print("[$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s),\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
+        #if !success
+        #    rating = "FAIL"
+        #end
+        print("[$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s):\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
 
         if success
             print("SUCCESS\n")

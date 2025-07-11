@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x_agree_tol=1e-3, max_iter=10, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2)
+function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x_agree_tol=1e-3, max_iter=10, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=true)
     status = "ok"
 
     # buffer
@@ -48,17 +48,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
         if verbosity > 1
             print("--Iteration $iter_count\n")
         end
-
-        # TODO: this should happen after new v computer
-        #if is_initialized
-        #    x .= v[bop.v_inds["x"]]
-        #    λ .= v[bop.v_inds["λ"]]
-        #    (is_necessary, is_sufficient) = check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L₂_size, bop.∇²ₓ₂L₂_rows, bop.∇²ₓ₂L₂_cols, bop.∇²ₓ₂L₂_vals!)
-        #    is_initialized = is_necessary && is_sufficient
-        #    if verbosity > 0
-        #        print("Iteration $iter_count: Follower is not at minimum, we must initialize again!\n")
-        #    end
-        #end
 
         if !is_initialized
             is_initialized = initialize_z!(v, bop; verbosity, init_solver, tol)
@@ -102,22 +91,26 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
 
             is_valid = false
             if is_solved
-                is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl)
-                @info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
+                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl)
+                #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
                 is_fol_nec, is_fol_suf = check_follower_sol(v, bop)
 
-                if is_fol_nec && is_fol_suf
-                    push!(vΛ_J_inds, i)
-                    push!(v_arr, copy(v))
-                    push!(Λ_arr, copy(Λ))
+                if is_checking_min && is_fol_nec && is_fol_suf
                     is_valid = true
-                    if verbosity > 2
-                        print("i=$i: Valid J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
-                    end
+                elseif !is_checking_min && is_fol_nec
+                    is_valid = true
                 end
             end
 
-            if !is_valid
+            if is_valid
+                push!(vΛ_J_inds, i)
+                push!(v_arr, copy(v))
+                push!(Λ_arr, copy(Λ))
+              
+                if verbosity > 2
+                    print("i=$i: Valid J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                end
+            else
                 if verbosity > 1
                     print("i=$i: NOT VALID J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
                 end
@@ -180,7 +173,22 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
                 Λ .= Λ_arr[i]
             end
         end
-        #Main.@infiltrate
+
+        if is_initialized
+            is_necessary, is_sufficient = check_follower_sol(v, bop)
+            if is_checking_min
+                is_initialized = is_necessary && is_sufficient
+            else
+                is_initialized = is_necessary
+            end
+           
+            if !is_initialized
+                if verbosity > 0
+                    print("Iteration $iter_count: Follower is not at minimum, we must initialize again!\n")
+                end
+                continue
+            end
+        end
 
         # by this point is_sol_valid = true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
         if !is_prev_v_set
@@ -249,12 +257,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
     λ = @view v[bop.v_inds["λ"]]
 
     # final sanity check
-    _, is_fol_sufficient = check_follower_sol(v, bop)
+    is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop)
 
     if is_sol_valid
-        if !is_fol_sufficient || !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
+        if !is_fol_necessary || (is_checking_min && !is_fol_sufficient) || !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
             if verbosity > 0
-                print("Something went VERY wrong, this allegedly valid solution is bilevel infeasible!\n")
+                print("Something went VERY wrong!\n")
             end
             status = "very_wrong"
             is_sol_valid = false
@@ -262,61 +270,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol=1e-3, x
     end
 
     (; x, status, iter_count)
-end
-
-
-#if !(is_necessary && is_sufficient)
-#    is_initialized = false
-#    if verbosity > 0
-#        print("Iteration $iter_count: Follower is not at minimum, we must initialize again!\n")
-#    end
-#end
-"""
-```
-Status:
-    -7: invalid v: other
-    -6: invalid v: something went very wrong
-    -5: invalid v: max invalid sols
-    -4: invalid v: none J is neither feasible or solvable
-    -3: invalid v: max iterations
-    -2: invalid v: max init restarts
-    -1: invalid v: max follower relaxations
-    0: success: valid v, converged
-    1: valid v: dv is monoton decreasing
-    2: valid v: max iterations
-    3: valid v: other
-```
-"""
-function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_J_feas_or_sol, is_max_invalid_sols, is_very_wrong)
-
-    if !is_sol_valid
-        if is_max_fol_relaxes
-            return -1
-        elseif is_max_init_restarts
-            return -2
-        elseif is_max_iter
-            return -3
-        elseif is_none_J_feas_or_sol
-            return -4
-        elseif is_max_invalid_sols
-            return -5
-        elseif is_very_wrong
-            return -6
-        else
-            return -7
-        end
-    end
-
-    if is_converged
-        return 0
-    elseif is_dv_mon_decreasing
-        return 1
-    elseif is_max_iter
-        return 2
-    else
-        return 3
-    end
-
 end
 
 function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_iter=100)
@@ -328,7 +281,7 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
     x1 = @view v[bop.v_inds["x1"]]
     x2 = @view v[bop.v_inds["x2"]]
     λ = zeros(bop.m2)
-    (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver=init_solver, tol)
+    (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol)
 
     # if failure it may be that the feasible region of the follower is empty for x₁
     if !success
@@ -517,7 +470,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
                 for j in 1:n
                     if isapprox(∇ₓg[i, j], 0; atol=2 * tol)
                         w = zeros(n)
-                        w[j] = 1.
+                        w[j] = 1.0
                     else
                         w = ones(n)
                         w[j] = 0.0
@@ -526,12 +479,16 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
                     end
 
                     # sanity checks, there might be a smarter way to get the tangent cone 
-                    @assert(!all(isapprox.(w, 0; atol=2 * tol))) # w should be non-zero
-                    @assert(isapprox.(w' * ∇ₓg[i, :], 0; atol=2 * tol))
 
-                    if w' * ∇²ₓL * w ≤ 0 # is semipositive definite is ok?
+                    if all(isapprox.(w, 0; atol=2 * tol)) && isapprox.(w' * ∇ₓg[i, :], 0; atol=2 * tol)
                         is_sufficient = false
+                    else
+                        @assert(isapprox.(w' * ∇ₓg[i, :], 0; atol=2 * tol))
+                        if w' * ∇²ₓL * w ≤ 0 # is semipositive definite is ok?
+                            is_sufficient = false
+                        end
                     end
+
                 end
             end
         else
@@ -1309,4 +1266,53 @@ function solve_bop2(bop; x_init=zeros(bop.n1 + bop.n2), tol=1e-6, max_iter=100, 
     status = get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_tol_restarts, is_max_iter, is_none_J_feas_or_sol, is_max_invalid_sols, is_very_wrong)
 
     (; x, status, iter_count)
+end
+
+
+"""
+```
+Status:
+    -7: invalid v: other
+    -6: invalid v: something went very wrong
+    -5: invalid v: max invalid sols
+    -4: invalid v: none J is neither feasible or solvable
+    -3: invalid v: max iterations
+    -2: invalid v: max init restarts
+    -1: invalid v: max follower relaxations
+    0: success: valid v, converged
+    1: valid v: dv is monoton decreasing
+    2: valid v: max iterations
+    3: valid v: other
+```
+"""
+function get_status(is_sol_valid, is_converged, is_dv_mon_decreasing, is_max_init_restarts, is_max_fol_relaxes, is_max_iter, is_none_J_feas_or_sol, is_max_invalid_sols, is_very_wrong)
+
+    if !is_sol_valid
+        if is_max_fol_relaxes
+            return -1
+        elseif is_max_init_restarts
+            return -2
+        elseif is_max_iter
+            return -3
+        elseif is_none_J_feas_or_sol
+            return -4
+        elseif is_max_invalid_sols
+            return -5
+        elseif is_very_wrong
+            return -6
+        else
+            return -7
+        end
+    end
+
+    if is_converged
+        return 0
+    elseif is_dv_mon_decreasing
+        return 1
+    elseif is_max_iter
+        return 2
+    else
+        return 3
+    end
+
 end
