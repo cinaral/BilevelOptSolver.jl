@@ -187,6 +187,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             is_sol_valid = true
             for (i, J) in enumerate(follow_feas_Js)
                 is_fol_nec, is_fol_suf = check_follower_sol(v_arr[i], bop)
+                #@info "v $v"
                 #@info "Follower nec $is_fol_nec suf $is_fol_suf"
 
                 # if solved is_fol_nec should already be true
@@ -224,11 +225,11 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             #n_Js = map(v -> length(compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)), v_arr)
             #Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
             #fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
+            #@info "$n_Js $Fs $fs"
             #Gs = mapreduce(v -> bop.G(v[bop.inds.v["x"]])', vcat, v_arr)
             #gs = mapreduce(v -> bop.g(v[bop.inds.v["x"]])', vcat, v_arr)
             #max_n_J = maximum(n_Js)
             #fs_sorted_inds = sortperm(fs)
-            #@info "$n_Js $Fs $fs"
             F = Inf
             for (i, vv) in enumerate(v_arr)
                 #if is_checking_min

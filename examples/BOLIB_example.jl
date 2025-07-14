@@ -34,18 +34,18 @@ FrankeEtal2018Ex513 (L-O-L-N)
 and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
 """
 # interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, Mirrlees1999 
-b = BOLIB.DempeDutta2012Ex24() 
+b = BOLIB.AiyoshiShimizu1984Ex2() 
 
 bop, _ = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 #x_optimal = [1; 0.957]
 #x_optimal = [-1.; 1]
 elapsed_time = @elapsed begin
-    success, x, iter_count, status = solve_bop(bop; max_iter=50, x_init=b.xy_init, verbosity=5, tol=1e-6, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, is_checking_x_agree=false, init_solver="IPOPT", solver="PATH")
+    is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter=50, x_init=b.xy_init, verbosity=5, tol=1e-6, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, is_checking_x_agree=false, init_solver="IPOPT", solver="PATH")
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
-if success
+if is_sol_valid
     print("success ")
 else
     print("FAIL ")

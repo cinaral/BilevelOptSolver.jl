@@ -48,25 +48,23 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            success, x, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
+            is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
         end
 
         is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong = rate_BOLIB_result(p, bop, x)
 
-        if success
-            if is_optimal || is_best
-                optimalish_count += 1
-            else
-                suboptimalish_count += 1
-            end
-        end
-
-        if success
+        if is_sol_valid
             print("success ")
             if is_probably_wrong
                 print("(!) ")
             end
             success_count += 1
+
+            if is_optimal || is_best
+                optimalish_count += 1
+            else
+                suboptimalish_count += 1
+            end
         else
             print("FAIL ")
         end
@@ -86,7 +84,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         push!(Ff_out_arr, Ff)
         push!(Ff_star_arr, Ff_star)
         push!(ratings, rating)
-        push!(success_arr, success)
+        push!(success_arr, is_sol_valid)
 
         prob_count += 1
     end
