@@ -40,7 +40,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
 
         # print iter info
         if prob_count % 20 == 0
-            print("id name: [status], iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
+            print("id name: success (status), iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
         end
         print("$(prob_count+1)\t $prob:\t ")
 
@@ -48,15 +48,10 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
-            x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
+            success, x, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
         end
 
-        is_optimal, is_best, Ff, Ff_star, rating, is_wrong = rate_BOLIB_result(p, bop, x)
-        success = status == "ok"
-
-        if is_wrong
-            success = false
-        end
+        is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong = rate_BOLIB_result(p, bop, x)
 
         if success
             if is_optimal || is_best
@@ -65,19 +60,17 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
                 suboptimalish_count += 1
             end
         end
-       
-        #if !success
-        #    rating = "FAIL"
-        #end
-        print("[$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s):\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\t")
 
         if success
-            print("SUCCESS\n")
+            print("success ")
+            if is_probably_wrong
+                print("(!) ")
+            end
             success_count += 1
         else
-            print("FAIL\n")
+            print("FAIL ")
         end
-
+        print("($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s):\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\n")
         push!(ps, p)
         push!(bops, bop)
         push!(prob_names, prob)
@@ -111,7 +104,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
 end
 
 function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
-    is_wrong = false
+    is_probably_wrong = false
     is_optimal = false
     is_best = false
     Ff = [bop.F(x); bop.f(x)]
@@ -130,7 +123,7 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
                 rating = "optimal F but f is worse"
             end
         elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
-            is_wrong = true
+            is_probably_wrong = true
             rating = "better than optimal?!"
         else
             rating = "SUBOPTIMAL Ff"
@@ -148,6 +141,7 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
             end
         elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
             is_best = true
+            is_probably_wrong = true
             rating = "better than best known Ff"
         else
             rating = "WORSE than best known Ff"
@@ -155,5 +149,5 @@ function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
     else
         rating = "no reference solution"
     end
-    is_optimal, is_best, Ff, Ff_star, rating, is_wrong
+    is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong
 end

@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=10, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=true)
+function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=100, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2)
 
     # buffers
     v = zeros(bop.n)
@@ -27,6 +27,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
     is_sol_valid = false
     is_prev_v_set = false
     is_norm_dv_full = false
+    no_sol_counter = 0
     norm_dv_arr = zeros(norm_dv_len)
     chron_norm_dv_arr = copy(norm_dv_arr)
     norm_dv_cur_idx = 1
@@ -39,11 +40,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
         solve_SBOPi_PATH! = setup_solve_SBOPi_PATH(bop)
     end
 
-
     iter_count = 0
     is_converged = false
     is_initialized = false
-    status = "ok"
+    status = "uninitialized"
 
     while !is_converged
         if iter_count >= max_iter
@@ -70,16 +70,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             end
         end
 
-        ## 2025-07-14 sanity check, due to tols this can fail...
-        #is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e3 * tol) # looser tolerance
-        #if !is_fol_nec
-        #    if verbosity > 0
-        #        print("The solution is invalid for the follower!\n")
-        #    end
-        #    status = "invalid_follower_sol"
-        #    break
-        #end
-
         # by this point, v must at least satisfy the follower's problem
         if verbosity > 5
             print("Computing feasible sets for the follower at v: ")
@@ -87,10 +77,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
         end
 
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity)
-
-        n_J = length(follow_feas_Js)
-
-        if n_J == 0
+        if length(follow_feas_Js) == 0
             if verbosity > 1
                 print("Could not compute follower's feasible sets despite satisfying follower's KKT! Maybe it's a tolerance issue?\n")
             end
@@ -130,9 +117,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
         empty!(v_arr)
         empty!(Λ_arr)
 
-        for i in 1:n_J
-            Ji = follow_feas_Js[i]
-            hl, hu, zl, zu = convert_J_to_h_z_bounds(Ji, bop)
+        for (i, J) in enumerate(follow_feas_Js)
+            hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
 
             if solver == "IPOPT"
                 is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
@@ -140,112 +126,115 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                 is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol, max_iter)
             end
 
-            # update the vals if successful
-            is_valid = false
             if is_solved
-                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl)
-                #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
-                is_fol_nec, is_fol_suf = check_follower_sol(v, bop)
-
-                if is_checking_min && is_fol_nec && is_fol_suf
-                    is_valid = true
-                elseif !is_checking_min && is_fol_nec
-                    is_valid = true
-                end
-            end
-
-            #Main.@infiltrate
-            if is_valid
                 push!(vΛ_J_inds, i)
                 push!(v_arr, copy(v))
                 push!(Λ_arr, copy(Λ))
 
                 if verbosity > 2
-                    print("i=$i: Valid J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                    print("SBOP$i: Solved J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
                 end
             else
                 if verbosity > 1
-                    print("i=$i: NOT VALID J1/2/3/4: $(Ji[1])/$(Ji[2])/$(Ji[3])/$(Ji[4])\n")
+                    print("SBOP$i: FAILED J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
                 end
             end
         end
 
-        if length(vΛ_J_inds) == n_J && n_J > 0
-            is_sol_valid = true
-        else
-            is_sol_valid = false
-        end
-
-        if is_sol_valid
-            if verbosity > 4
-                print("All $n_J follower solutions have valid v and Λ.\n")
-            end
-        end
-
+        # solved none, we have to check if we have to re-initialize
         if length(vΛ_J_inds) == 0
-            #Main.@infiltrate
+            no_sol_counter += 1
             if verbosity > 1
-                print("Failed to find any valid solutions!\n")
+                print("Failed to solve any SBOPi!\n")
             end
-            status = "no_valid_sols"
-            break
+            if no_sol_counter >= max_no_sols
+                status = "max_no_sols"
+                break
+            end
+
+            is_necessary, _ = check_follower_sol(v, bop)
+            if !is_necessary
+                is_initialized = false
+                if verbosity > 0
+                    print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
+                end
+                status = "uninitialized"
+            end
+            continue
         end
 
-        # optional check
-        if is_checking_x_agree && is_sol_valid
-            for (i, vv) in enumerate(v_arr)
-                if i < n_J
-                    norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
+        # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
+        is_all_solved = length(vΛ_J_inds) == n_J
 
-                    if (norm_x_err > x_agree_tol)
-                        if verbosity > 1
-                            print("SBOPi solutions disagree! norm x err: $norm_x_err\n")
+        if is_all_solved
+            if verbosity > 0
+                print("All SBOPi ($n_J) solved.\n")
+            end
+
+            is_sol_valid = true
+            for (i, J) in enumerate(follow_feas_Js)
+                is_fol_nec, is_fol_suf = check_follower_sol(v_arr[i], bop)
+                #@info "Follower nec $is_fol_nec suf $is_fol_suf"
+
+                # if solved is_fol_nec should already be true
+                if is_checking_min && !is_fol_suf
+                    if verbosity > 1
+                        print("SBOP$i solution is probably not a minimum for follower\n")
+                    end
+                    is_sol_valid = false
+                    break
+                end
+                #hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
+                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v_arr[i], Λ_arr[i], bop, hl, hu, zu, zl)
+                #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
+            end
+
+            # optional check
+            if is_checking_x_agree && is_sol_valid
+                for (i, vv) in enumerate(v_arr)
+                    if i < n_J
+                        norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
+                        if (norm_x_err > x_agree_tol)
+                            if verbosity > 1
+                                print("SBOPi solutions disagree! norm x err: $norm_x_err\n")
+                            end
+                            is_sol_valid = false
+                            break
                         end
-                        is_sol_valid = false
-                        break
                     end
                 end
             end
         end
 
-        #n_Js = map(v -> length(compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)), v_arr)
-        #Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
-        #fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
-        #Gs = mapreduce(v -> bop.G(v[bop.inds.v["x"]])', vcat, v_arr)
-        #gs = mapreduce(v -> bop.g(v[bop.inds.v["x"]])', vcat, v_arr)
-        #max_n_J = maximum(n_Js)
-        #fs_sorted_inds = sortperm(fs)
-        #@info "$n_Js $Fs $fs"
-
-        F = Inf
-        for (i, _) in enumerate(v_arr)
-            #is_necessary, is_sufficient = check_follower_sol(v_arr[i], bop)
-            #@info "$is_necessary, $is_sufficient"
-            F_ = bop.F(v_arr[i][bop.inds.v["x"]])   # choose the smallest available F value
-
-            if F_ < F
-                F = F_
-                v .= v_arr[i]
-                Λ .= Λ_arr[i]
-            end
-        end
-
-        # 2025-07-14 this should never happen if there were any valid solutions, but if no SBOPi could be solved, we may have to re-initialize
-        if is_initialized
-            is_necessary, _ = check_follower_sol(v, bop)
-
-            if !is_necessary
-                @info "this should never happen"
-                is_initialized = false
-                if verbosity > 0
-                    print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
+        # if the solution is not valid we have to choose a new v and try again
+        if !is_sol_valid
+            #n_Js = map(v -> length(compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)), v_arr)
+            #Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
+            #fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
+            #Gs = mapreduce(v -> bop.G(v[bop.inds.v["x"]])', vcat, v_arr)
+            #gs = mapreduce(v -> bop.g(v[bop.inds.v["x"]])', vcat, v_arr)
+            #max_n_J = maximum(n_Js)
+            #fs_sorted_inds = sortperm(fs)
+            #@info "$n_Js $Fs $fs"
+            F = Inf
+            for (i, vv) in enumerate(v_arr)
+                #if is_checking_min
+                #    _, is_fol_suf = check_follower_sol(vv, bop)
+                #    if !is_fol_suf
+                #        continue
+                #    end
+                #end
+                F_ = bop.F(vv[bop.inds.v["x"]])   # choose the smallest available F value
+                if F_ < F
+                    F = F_
+                    v .= v_arr[i]
+                    Λ .= Λ_arr[i]
                 end
-                status = ["invalid_follower_sol"]
-                continue
             end
+            #continue
         end
 
-        # by this point is_sol_valid = true: v's are sols and agree, Λs are feasible, all we have to check now is if the solution has converged
+        # we check if the solution has converged even if the solution is not valid
         if !is_prev_v_set
             prev_iter_v .= v
             is_prev_v_set = true
@@ -276,14 +265,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                     print("Converged in $iter_count iterations! (Last $conv_dv_len norm(dv) is less than conv tol $conv_tol)\n")
                 end
                 is_converged = true
-                status = ["converged"]
+                status = "converged"
                 break
             elseif is_norm_dv_full && all(diff(chron_norm_dv_arr) .≤ -tol)
                 # also it's worth checking if dv is slowly
                 if verbosity > 3
                     print("last $norm_dv_len norm(dv) is monotonously decreasing without meeting conv tol, terminating\n")
                 end
-                status = ["monoton_decreasing"]
+                status = "monoton_decreasing"
                 break
             end
 
@@ -310,8 +299,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
     end
 
     x = @view v[bop.inds.v["x"]]
-    λ = @view v[bop.inds.v["λ"]]
-
     # final sanity check
     is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop)
 
@@ -324,8 +311,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             is_sol_valid = false
         end
     end
-
-    (; x, status, iter_count)
+    (; is_sol_valid, x, iter_count, status)
 end
 
 function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_iter=100)

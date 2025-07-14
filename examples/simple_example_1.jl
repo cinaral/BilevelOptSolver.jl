@@ -41,9 +41,14 @@ x_init = [2.4564338234981746; 0.9845259227566776]
 
 bop, _ = construct_bop(n₁, n₂, F, G, f, g);
 
-x, status, iter_count = solve_bop(bop; x_init, solver="PATH", verbosity=5)
+success, x, iter_count, status = solve_bop(bop; x_init, solver="PATH", is_checking_min=false, verbosity=5)
 
 Ff = [bop.F(x); bop.f(x)]
-print("status: [$status], $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_optimal, sigdigits=5)))\n");
+if success
+    print("success ")
+else
+    print("FAIL ")
+end
+print("($status), $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_optimal, sigdigits=5)))\n");
 
 
