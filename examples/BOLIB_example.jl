@@ -47,15 +47,15 @@ end
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
 print("status: [$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s),\t" * rating * ",\t x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_star, sigdigits=5)))\n");
 
-include("../src/forrest_solver.jl")
-using .forrest_solver
-OP1 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n1, b.F, b.G, zeros(bop.m1), fill(Inf, bop.m1))
-OP2 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n2, b.f, b.g, zeros(bop.m2), fill(Inf, bop.m2))
-bilevel = [OP1; OP2]
-out_bilevel = forrest_solver.solve(bilevel)
-x_forrest = out_bilevel[1:b.n1+b.n2]
-@info x_forrest 
-@info bop.F(x_forrest)
+#include("../src/forrest_solver.jl")
+#using .forrest_solver
+#OP1 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n1, b.F, b.G, zeros(bop.m1), fill(Inf, bop.m1))
+#OP2 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n2, b.f, b.g, zeros(bop.m2), fill(Inf, bop.m2))
+#bilevel = [OP1; OP2]
+#out_bilevel = forrest_solver.solve(bilevel)
+#x_forrest = out_bilevel[1:b.n1+b.n2]
+#@info x_forrest 
+#@info bop.F(x_forrest)
 
 #nash = [OP1 OP2]
 #out_nash = forrest_solver.solve(nash)
