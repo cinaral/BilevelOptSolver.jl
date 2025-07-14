@@ -36,9 +36,16 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         end
         p = getfield(Main.BOLIB, Symbol(prob))()
 
-        bop = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
-        # dry runs for @time...
-        solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
+        bop, _ = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
+
+        # print iter info
+        if prob_count % 20 == 0
+            print("id name: [status], iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
+        end
+        print("$(prob_count+1)\t $prob:\t ")
+
+        # dry run for @elapsed...
+        solve_bop(bop; max_iter=2, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
             x, status, iter_count = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
@@ -58,13 +65,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
                 suboptimalish_count += 1
             end
         end
-
-        # print iter info
-        if prob_count % 20 == 0
-            print("id name: [status], iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
-        end
-        print("$(prob_count+1)\t $prob:\t ")
-
+       
         #if !success
         #    rating = "FAIL"
         #end

@@ -39,7 +39,7 @@ end
 Ff_optimal = [3.0, 1.0]
 x_init = [2.4564338234981746; 0.9845259227566776]
 
-bop = construct_bop(n₁, n₂, F, G, f, g);
+bop, _ = construct_bop(n₁, n₂, F, G, f, g);
 
 x, status, iter_count = solve_bop(bop; x_init, solver="PATH", verbosity=5)
 

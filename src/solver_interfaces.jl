@@ -122,9 +122,10 @@ function setup_mcp_solve_PATH(n, xl, xu, F, J_rows, J_cols, J_vals!)
     J_len = diff(J_shape.colptr)
     J_row = J_shape.rowval
 
-    if isempty(J_row)
-        J_row = 0
-    end
+    # 2025-07-13 Why do I need this??
+    #if isempty(J_row)
+    #    J_row = 0
+    #end
 
     function eval_F(n, x, vals)
         vals .= 0.0

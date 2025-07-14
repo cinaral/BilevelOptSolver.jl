@@ -17,21 +17,21 @@ struct BilevelOptProb
     g!::Function # g!(out, x) 
     ∇ₓ₂f!::Function # ∇ₓ₂f!(out, x)
     # ∇ₓ₂g
-    ∇ₓ₂g_size::Tuple{Int, Int}
+    ∇ₓ₂g_size::Tuple{Int,Int}
     ∇ₓ₂g_rows::Vector{Int}
     ∇ₓ₂g_cols::Vector{Int}
     ∇ₓ₂g_vals!::Function # ∇ₓ₂g_vals!(out, x)
-    # ∇²ₓ₂L₂, L₂ = of * f(x) - λ' g(x)
-    ∇²ₓ₂L₂_size::Tuple{Int, Int}
-    ∇²ₓ₂L₂_rows::Vector{Int}
-    ∇²ₓ₂L₂_cols::Vector{Int}
-    ∇²ₓ₂L₂_vals!::Function # ∇²ₓ₂L_vals!(out, v, λ, of)
+    # ∇²ₓ₂L2, L2 = of * f(x) - λ' g(x)
+    ∇²ₓ₂L2_size::Tuple{Int,Int}
+    ∇²ₓ₂L2_rows::Vector{Int}
+    ∇²ₓ₂L2_cols::Vector{Int}
+    ∇²ₓ₂L2_vals!::Function # ∇²ₓ₂L_vals!(out, v, λ, of)
     # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
     zl₀::Vector{Float64} # default z bounds 
     zu₀::Vector{Float64}
     h!::Function # h!(out, v)
     # ∇_z h
-    ∇h_size::Tuple{Int, Int}
+    ∇h_size::Tuple{Int,Int}
     ∇h_rows::Vector{Int}
     ∇h_cols::Vector{Int}
     ∇h_vals!::Function # ∇h_vals!(out, v)
@@ -40,21 +40,21 @@ struct BilevelOptProb
     Γ!::Function # Γ!(out, v)
     ∇ᵥF!::Function # Γ!(out, v) 
     # ∇ᵥΓ
-    ∇ᵥΓ_size::Tuple{Int, Int}
+    ∇ᵥΓ_size::Tuple{Int,Int}
     ∇ᵥΓ_rows::Vector{Int}
     ∇ᵥΓ_cols::Vector{Int}
     ∇ᵥΓ_vals!::Function # ∇ᵥΓ_vals!(out, v)
-    # ∇²ᵥL₁, L₁ = of * F(v) - Λ' Γ(v)
-    ∇²ᵥL₁_size::Tuple{Int, Int}
-    ∇²ᵥL₁_rows::Vector{Int}
-    ∇²ᵥL₁_cols::Vector{Int}
-    ∇²ᵥL₁_vals!::Function # ∇²ᵥL₁_vals!(out, v, Λ, of)
+    # ∇²ᵥL1, L1 = of * F(v) - Λ' Γ(v)
+    ∇²ᵥL1_size::Tuple{Int,Int}
+    ∇²ᵥL1_rows::Vector{Int}
+    ∇²ᵥL1_cols::Vector{Int}
+    ∇²ᵥL1_vals!::Function # ∇²ᵥL1_vals!(out, v, Λ, of)
     # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
     θl₀::Vector{Float64} # default θ bounds
     θu₀::Vector{Float64}
     Φ!::Function # Φ!(out, v, Λ)
     # ∇_θ Φ
-    ∇Φ_size::Tuple{Int, Int}
+    ∇Φ_size::Tuple{Int,Int}
     ∇Φ_rows::Vector{Int}
     ∇Φ_cols::Vector{Int}
     ∇Φ_vals!::Function # ∇Φ_vals!(out, θ)
@@ -62,21 +62,18 @@ struct BilevelOptProb
     Gg!::Function # Gg!(out, x) 
     ∇ₓF!::Function # ∇ₓF!(out, x)
     # ∇ₓGg
-    ∇ₓGg_size::Tuple{Int, Int}
+    ∇ₓGg_size::Tuple{Int,Int}
     ∇ₓGg_rows::Vector{Int}
     ∇ₓGg_cols::Vector{Int}
     ∇ₓGg_vals!::Function # ∇ₓGg_vals!(out, x)
-    # ∇²ₓL₃, L₃ = of * F(x) - Λ₃' Gg(x)
-    ∇²ₓL₃_size::Tuple{Int, Int}
-    ∇²ₓL₃_rows::Vector{Int}
-    ∇²ₓL₃_cols::Vector{Int}
-    ∇²ₓL₃_vals!::Function # ∇²ₓ₃L_vals!(out, x, Λ₃, of)
+    # ∇²ₓL3, L3 = of * F(x) - Λ₃' Gg(x)
+    ∇²ₓL3_size::Tuple{Int,Int}
+    ∇²ₓL3_rows::Vector{Int}
+    ∇²ₓL3_cols::Vector{Int}
+    ∇²ₓL3_vals!::Function # ∇²ₓ₃L_vals!(out, x, Λ₃, of)
     # for convenience
-    x_inds::Dict{String,UnitRange{Int64}} # indexes x := [x₁; x₂]
-    z_inds::Dict{String,UnitRange{Int64}} # indexes z := [x₂; λ]
-    v_inds::Dict{String,UnitRange{Int64}} # indexes v := [x₁; z]
-    Γ_inds::Dict{String,UnitRange{Int64}} # indexes Γ := [G; h; -h; z; -z]
-    θ_inds::Dict{String,UnitRange{Int64}} # indexes θ := [v; Λ]
+    inds
+
 end
 
 """
@@ -114,8 +111,8 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     m = m1 + 4 * nz
     nθ = n + m
 
-    x1_sym = Symbolics.@variables(x1[1:n1])[1] |> Symbolics.scalarize
-    x2_sym = Symbolics.@variables(x2[1:n2])[1] |> Symbolics.scalarize
+    x1_sym = Symbolics.@variables(x[1:n1])[1] |> Symbolics.scalarize
+    x2_sym = Symbolics.@variables(y[1:n2])[1] |> Symbolics.scalarize
     λ_sym = Symbolics.@variables(λ[1:m2])[1] |> Symbolics.scalarize
     p_sym = Symbolics.@variables(p[1:np])[1] |> Symbolics.scalarize
     x_sym = [x1_sym; x2_sym] # x := [x₁; x₂]
@@ -124,47 +121,16 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     @assert(nx == length(x_sym))
     @assert(nz == length(z_sym))
     @assert(n == length(v_sym))
-    F_sym = F(x_sym)
-    G_sym = G(x_sym)
-    f_sym = f(x_sym)
-    g_sym = g(x_sym)
 
-    xp_sym = [x_sym; p_sym]
-    vp_sym = [v_sym; p_sym]
+    xp_sym = Num[x_sym; p_sym]
+    vp_sym = Num[v_sym; p_sym]
+    F_sym = F(xp_sym)
+    G_sym = G(xp_sym)
+    f_sym = f(xp_sym)
+    g_sym = g(xp_sym)
 
-    # we define these for convenience
-    x_inds = Dict([
-        ("x1", 1:n1),
-        ("x2", n1+1:n1+n2),
-        ("p", n1+n2+1:n1+n2+np)
-    ])
-    z_inds = Dict([
-        ("x2", 1:n2),
-        ("λ", n2+1:n2+m2)
-    ])
-    v_inds = Dict([
-        ("x", 1:nx),
-        ("x1", 1:n1),
-        ("z", n1+1:n1+nz),
-        ("x2", n1+1:nx),
-        ("λ", nx+1:nx+m2)
-    ])
-    Γ_inds = Dict([
-        ("G" => 1:m1),
-        ("hl" => m1+1:m1+nz),
-        ("hu" => m1+nz+1:m1+2*nz),
-        ("zl" => m1+2*nz+1:m1+3*nz),
-        ("zu" => m1+3*nz+1:m1+4*nz)
-    ])
-    θ_inds = Dict([
-        ("v" => 1:n),
-        ("Λ" => n+1:n+m),
-        ("ΛG" => n+1:n+m1),
-        ("Λhl" => n+m1+1:n+m1+nz),
-        ("Λhu" => n+m1+nz+1:n+m1+2*nz),
-        ("Λzl" => n+m1+2*nz+1:n+m1+3*nz),
-        ("Λzu" => n+m1+3*nz+1:n+m1+4*nz)
-    ])
+    # we define these index dictionaries for convenience later
+    inds = define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
 
     # follower NLP: min f(x) s.t. g(x) ≥ 0
     f = Symbolics.build_function(f_sym, xp_sym; expression=Val{false})
@@ -178,26 +144,26 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇ₓ₂g_rows, ∇ₓ₂g_cols, ∇ₓ₂g_vals_sym) = SparseArrays.findnz(∇ₓ₂g_sym)
     ∇ₓ₂g_vals! = Symbolics.build_function(∇ₓ₂g_vals_sym, xp_sym; expression=Val{false})[2]
 
-    # ∇²ₓ₂L₂, L₂ =  of f(x) - λ' g(x)
-    of₂_sym = Symbolics.@variables(of2)[1] # objective factor
+    # ∇²ₓ₂L2, L2 =  of f(x) - λ' g(x)
+    of2_sym = Symbolics.@variables(λ₀)[1] # objective factor
     if isempty(λ_sym)
-        L₂_sym = of₂_sym * f_sym
+        L2_sym = of2_sym * f_sym
     else
-        L₂_sym = of₂_sym * f_sym - g_sym' * λ_sym
+        L2_sym = of2_sym * f_sym - g_sym' * λ_sym
     end
-    ∇ₓ₂L₂_sym = Symbolics.gradient(L₂_sym, x2_sym)
-    ∇²ₓ₂L₂_sym = Symbolics.sparsejacobian(∇ₓ₂L₂_sym, x2_sym)
-    ∇²ₓ₂L₂_size = size(∇²ₓ₂L₂_sym)
-    (∇²ₓ₂L₂_rows, ∇²ₓ₂L₂_cols, ∇²ₓ₂L₂_vals_sym) = SparseArrays.findnz(∇²ₓ₂L₂_sym)
-    ∇²ₓ₂L₂_vals! = Symbolics.build_function(∇²ₓ₂L₂_vals_sym, xp_sym, λ_sym, of₂_sym; expression=Val{false})[2]
+    ∇ₓ₂L2_sym = Symbolics.gradient(L2_sym, x2_sym)
+    ∇²ₓ₂L2_sym = Symbolics.sparsejacobian(∇ₓ₂L2_sym, x2_sym)
+    ∇²ₓ₂L2_size = size(∇²ₓ₂L2_sym)
+    (∇²ₓ₂L2_rows, ∇²ₓ₂L2_cols, ∇²ₓ₂L2_vals_sym) = SparseArrays.findnz(∇²ₓ₂L2_sym)
+    ∇²ₓ₂L2_vals! = Symbolics.build_function(∇²ₓ₂L2_vals_sym, xp_sym, λ_sym, of2_sym; expression=Val{false})[2]
 
     # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
     # by default x₂ is free and λ ≥ 0, but these will be overwritten later
-    ∇ₓ₂L₂_sym = substitute(∇ₓ₂L₂_sym, Dict([of₂_sym=>1.]))
+    ∇ₓ₂L2_sym = substitute(∇ₓ₂L2_sym, Dict([of2_sym => 1.0]))
     zl₀ = [fill(-Inf, n2); zeros(m2)] # default z lb
     zu₀ = fill(Inf, nz) # default z ub
     if nz > 0
-        h_sym = [∇ₓ₂L₂_sym; g_sym]
+        h_sym = [∇ₓ₂L2_sym; g_sym]
     else
         h_sym = []
     end
@@ -215,7 +181,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     # SBOPi NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
     Γ_sym = [G_sym; h_sym; -h_sym; z_sym; -z_sym]
     @assert(m == length(Γ_sym))
-    Fv = Symbolics.build_function(F_sym, vp_sym; expression=Val{false})
+    Fv = Symbolics.build_function(F_sym, vp_sym; expression=Val{false}) # for convenience: F that takes v as argument 
     Γ! = Symbolics.build_function(Γ_sym, vp_sym; expression=Val(false))[2]
     ∇ᵥF_sym = Symbolics.gradient(F_sym, vp_sym)
     ∇ᵥF! = Symbolics.build_function(∇ᵥF_sym, vp_sym; expression=Val{false})[2]
@@ -226,31 +192,31 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇ᵥΓ_rows, ∇ᵥΓ_cols, ∇ᵥΓ_vals_sym) = SparseArrays.findnz(∇ᵥΓ_sym)
     ∇ᵥΓ_vals! = Symbolics.build_function(∇ᵥΓ_vals_sym, vp_sym; expression=Val{false})[2]
 
-    # ∇²ᵥL₁, L₁ = F(v) - Λ' Γ(v)
+    # ∇²ᵥL1, L1 = F(v) - Λ' Γ(v)
     Λ_sym = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
-    of₁_sym = Symbolics.@variables(of1)[1] # objective factor
+    of1_sym = Symbolics.@variables(λ₀)[1] # objective factor
     if isempty(λ_sym)
-        L₁_sym = of₁_sym * F_sym
+        L1_sym = of1_sym * F_sym
     else
-        L₁_sym = of₁_sym * F_sym - Γ_sym' * Λ_sym
+        L1_sym = of1_sym * F_sym - Γ_sym' * Λ_sym
     end
-    ∇ᵥL₁_sym = Symbolics.gradient(L₁_sym, v_sym)
-    ∇²ᵥL₁_sym = Symbolics.sparsejacobian(∇ᵥL₁_sym, v_sym)
-    ∇²ᵥL₁_size = size(∇²ᵥL₁_sym)
-    (∇²ᵥL₁_rows, ∇²ᵥL₁_cols, ∇²ᵥL₁_vals_sym) = SparseArrays.findnz(∇²ᵥL₁_sym)
-    ∇²ᵥL₁_vals! = Symbolics.build_function(∇²ᵥL₁_vals_sym, vp_sym, Λ_sym, of₁_sym; expression=Val{false})[2]
+    ∇ᵥL1_sym = Symbolics.gradient(L1_sym, v_sym)
+    ∇²ᵥL1_sym = Symbolics.sparsejacobian(∇ᵥL1_sym, v_sym)
+    ∇²ᵥL1_size = size(∇²ᵥL1_sym)
+    (∇²ᵥL1_rows, ∇²ᵥL1_cols, ∇²ᵥL1_vals_sym) = SparseArrays.findnz(∇²ᵥL1_sym)
+    ∇²ᵥL1_vals! = Symbolics.build_function(∇²ᵥL1_vals_sym, vp_sym, Λ_sym, of1_sym; expression=Val{false})[2]
 
     # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
     # by default v is free and Λ ≥ 0, but these will be overwritten later
     θ_sym = [v_sym; Λ_sym]
     @assert(nθ == length(θ_sym))
-    θp_sym = [v_sym; Λ_sym; p_sym]
+    θp_sym = Num[v_sym; Λ_sym; p_sym]
     θl₀ = [fill(-Inf, n); zeros(m)] # default θ lb
-    θl₀[θ_inds["Λhl"]] .= zl₀
+    θl₀[inds.θ["Λhl"]] .= zl₀
     θu₀ = fill(Inf, nθ) # default θ ub
-    θu₀[θ_inds["Λhu"]] .= zu₀
-    ∇ᵥL₁_sym = substitute(∇ᵥL₁_sym, Dict([of₁_sym=>1.]))
-    Φ_sym = [∇ᵥL₁_sym; Γ_sym]
+    θu₀[inds.θ["Λhu"]] .= zu₀
+    ∇ᵥL1_sym = substitute(∇ᵥL1_sym, Dict([of1_sym => 1.0]))
+    Φ_sym = [∇ᵥL1_sym; Γ_sym]
     Φ! = Symbolics.build_function(Φ_sym, θp_sym; expression=Val(false))[2]
     ∇Φ_sym = Symbolics.sparsejacobian(Φ_sym, θ_sym)
     ∇Φ_size = size(∇Φ_sym)
@@ -269,21 +235,21 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇ₓGg_rows, ∇ₓGg_cols, ∇ₓGg_vals) = SparseArrays.findnz(∇ₓGg_sym)
     ∇ₓGg_vals! = Symbolics.build_function(∇ₓGg_vals, xp_sym; expression=Val{false})[2]
 
-    # ∇²ₓL₃, L₃ = F(x) - Λ₃' Gg(x)
+    # ∇²ₓL3, L3 = F(x) - Λ₃' Gg(x)
     Λ₃_sym = Symbolics.@variables(Λ[1:m1+m2])[1] |> Symbolics.scalarize
-    of₃_sym = Symbolics.@variables(of3)[1] # objective factor
+    of3_sym = Symbolics.@variables(λ₀)[1] # objective factor
     if isempty(Λ₃_sym)
-        L₃_sym = of₃_sym * F_sym
+        L3_sym = of3_sym * F_sym
     else
-        L₃_sym = of₃_sym * F_sym - Gg_sym' * Λ₃_sym
+        L3_sym = of3_sym * F_sym - Gg_sym' * Λ₃_sym
     end
-    ∇ₓL₃_sym = Symbolics.gradient(L₃_sym, x_sym)
-    ∇²ₓL_sym = Symbolics.sparsejacobian(∇ₓL₃_sym, x_sym)
-    ∇²ₓL₃_size = size(∇²ₓL_sym)
-    (∇²ₓL₃_rows, ∇²ₓL₃_cols, ∇²ₓL₃_vals_sym) = SparseArrays.findnz(∇²ₓL_sym)
-    ∇²ₓL₃_vals! = Symbolics.build_function(∇²ₓL₃_vals_sym, xp_sym, Λ₃_sym, of₃_sym; expression=Val{false})[2]
+    ∇ₓL3_sym = Symbolics.gradient(L3_sym, x_sym)
+    ∇²ₓL3_sym = Symbolics.sparsejacobian(∇ₓL3_sym, x_sym)
+    ∇²ₓL3_size = size(∇²ₓL3_sym)
+    (∇²ₓL3_rows, ∇²ₓL3_cols, ∇²ₓL3_vals_sym) = SparseArrays.findnz(∇²ₓL3_sym)
+    ∇²ₓL3_vals! = Symbolics.build_function(∇²ₓL3_vals_sym, xp_sym, Λ₃_sym, of3_sym; expression=Val{false})[2]
 
-    BilevelOptProb(
+    bop = BilevelOptProb(
         F,
         G,
         f,
@@ -306,11 +272,11 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
         ∇ₓ₂g_rows,
         ∇ₓ₂g_cols,
         ∇ₓ₂g_vals!,
-        # ∇²ₓ₂L₂, L₂ = f(x) - λ' g(x)
-        ∇²ₓ₂L₂_size,
-        ∇²ₓ₂L₂_rows,
-        ∇²ₓ₂L₂_cols,
-        ∇²ₓ₂L₂_vals!,
+        # ∇²ₓ₂L2, L2 = f(x) - λ' g(x)
+        ∇²ₓ₂L2_size,
+        ∇²ₓ₂L2_rows,
+        ∇²ₓ₂L2_cols,
+        ∇²ₓ₂L2_vals!,
         # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
         zl₀,
         zu₀,
@@ -329,11 +295,11 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
         ∇ᵥΓ_rows,
         ∇ᵥΓ_cols,
         ∇ᵥΓ_vals!,
-        # ∇²ᵥL₁, L₁ = F(v) - Λ' Γ(v)
-        ∇²ᵥL₁_size,
-        ∇²ᵥL₁_rows,
-        ∇²ᵥL₁_cols,
-        ∇²ᵥL₁_vals!,
+        # ∇²ᵥL1, L1 = F(v) - Λ' Γ(v)
+        ∇²ᵥL1_size,
+        ∇²ᵥL1_rows,
+        ∇²ᵥL1_cols,
+        ∇²ᵥL1_vals!,
         # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
         θl₀,
         θu₀,
@@ -351,16 +317,68 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
         ∇ₓGg_rows,
         ∇ₓGg_cols,
         ∇ₓGg_vals!,
-        # ∇²ₓL₃, L₃ = F(x) - Λ₃' Gg(x)
-        ∇²ₓL₃_size,
-        ∇²ₓL₃_rows,
-        ∇²ₓL₃_cols,
-        ∇²ₓL₃_vals!,
+        # ∇²ₓL3, L3 = F(x) - Λ₃' Gg(x)
+        ∇²ₓL3_size,
+        ∇²ₓL3_rows,
+        ∇²ₓL3_cols,
+        ∇²ₓL3_vals!,
         # for convenience
-        x_inds,
-        z_inds,
-        v_inds,
-        Γ_inds,
-        θ_inds
+        inds
     )
+
+    syms = (; x=xp_sym, F=F_sym, G=G_sym, f=f_sym, g=g_sym, ∇ₓ₂f=∇ₓ₂f_sym, ∇ₓ₂g=∇ₓ₂g_sym, λ=λ_sym, L2=L2_sym, ∇ₓ₂L2=∇ₓ₂L2_sym, ∇²ₓ₂L2=∇²ₓ₂L2_sym, v=vp_sym, z=z_sym, h=h_sym, ∇h=∇h_sym, Γ=Γ_sym, ∇ᵥF=∇ᵥF_sym, ∇ᵥΓ=∇ᵥΓ_sym, L1=L1_sym, ∇ᵥL1=∇ᵥL1_sym, ∇²ᵥL1=∇²ᵥL1_sym, θ=θp_sym, Φ=Φ_sym, ∇Φ=∇Φ_sym, ∇ₓF=∇ₓF_sym, Gg=Gg_sym, ∇ₓGg=∇ₓGg_sym, L3=L3_sym, ∇ₓL3=∇ₓL3_sym, ∇²ₓL3=∇²ₓL3_sym)
+
+    (; bop, syms)
 end
+
+"""
+    x := [x1; x2] and optionally [x1; x2; p] to let F, G, f, g functions accept paramaters
+    z := [x2; λ]
+    v := [x1; z] and optionally [x1; z; p] to let F, G, f, g functions accept paramaters
+    Γ := [G; h; -h; z; -z] 
+    θ := [v; Λ] where Λ'Γ=0 (so pars   and optionally [v; Λ; p] to let F, G, f, g functions accept paramaters
+"""
+function define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
+    x_inds = Dict{String,UnitRange{Int64}}([
+        ("x1", 1:n1),
+        ("x2", n1+1:n1+n2),
+        ("p", n1+n2+1:n1+n2+np)
+    ])
+
+    z_inds = Dict{String,UnitRange{Int64}}([
+        ("x2", 1:n2)
+        ("λ", n2+1:n2+m2)
+    ])
+
+    v_inds = Dict{String,UnitRange{Int64}}([
+        ("x1", 1:n1),
+        ("z", n1+1:n1+nz),
+        ("p", n1+nz+1:n1+nz+np),
+        ("x", 1:nx),
+        ("x2", n1+1:nx),
+        ("λ", nx+1:nx+m2)
+    ])
+
+    Γ_inds = Dict{String,UnitRange{Int64}}([
+        ("G" => 1:m1),
+        ("hl" => m1+1:m1+nz),
+        ("hu" => m1+nz+1:m1+2*nz),
+        ("zl" => m1+2*nz+1:m1+3*nz),
+        ("zu" => m1+3*nz+1:m1+4*nz)
+    ])
+
+    θ_inds = Dict{String,UnitRange{Int64}}([
+        ("v" => 1:n),
+        ("Λ" => n+1:n+m),
+        ("p" => n+m+1:n+m+np),
+        ("p" => n+m+1:n+m+np),
+        ("Λhl" => n+m1+1:n+m1+nz),
+        ("Λhu" => n+m1+nz+1:n+m1+2*nz),
+        ("Λzl" => n+m1+2*nz+1:n+m1+3*nz),
+        ("Λzu" => n+m1+3*nz+1:n+m1+4*nz)
+    ])
+
+    inds = (; x=x_inds, z=z_inds, v=v_inds, Γ=Γ_inds, θ=θ_inds)
+end
+
+

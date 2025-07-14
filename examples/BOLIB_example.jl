@@ -34,29 +34,28 @@ FrankeEtal2018Ex513 (L-O-L-N)
 and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
 """
 # interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, Mirrlees1999 
-b = BOLIB.AllendeStill2013()
+b = BOLIB.AiyoshiShimizu1984Ex2()
 
-bop = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
-#bop = construct_bop(b.n2, b.n1, b.f, b.g, b.F, b.G, verbosity=0)
+bop, _ = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 #x_optimal = [1; 0.957]
 #x_optimal = [-1.; 1]
 elapsed_time = @elapsed begin
-    x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, tol=1e-7, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, is_checking_x_agree=false, init_solver="IPOPT", solver="IPOPT")
+    x, status, iter_count = @btime solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=0, tol=1e-7, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, is_checking_x_agree=false, init_solver="PATH", solver="PATH")
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
 print("status: [$status], $iter_count iters ($(round(elapsed_time, sigdigits=5)) s),\t" * rating * ",\t x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(Ff_star, sigdigits=5)))\n");
 
-#include("../src/forrest_solver.jl")
-#using .forrest_solver
-#OP1 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n1, b.F, b.G, zeros(bop.m1), fill(Inf, bop.m1))
-#OP2 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n2, b.f, b.g, zeros(bop.m2), fill(Inf, bop.m2))
-#bilevel = [OP1; OP2]
-#out_bilevel = forrest_solver.solve(bilevel)
-#x_forrest = out[1:b.n1+b.n2]
-#@info x_forrest 
-#@info bop.F(x_forrest)
+include("../src/forrest_solver.jl")
+using .forrest_solver
+OP1 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n1, b.F, b.G, zeros(bop.m1), fill(Inf, bop.m1))
+OP2 = forrest_solver.OptimizationProblem(b.n1 + b.n2, 1:b.n2, b.f, b.g, zeros(bop.m2), fill(Inf, bop.m2))
+bilevel = [OP1; OP2]
+out_bilevel = forrest_solver.solve(bilevel)
+x_forrest = out_bilevel[1:b.n1+b.n2]
+@info x_forrest 
+@info bop.F(x_forrest)
 
 #nash = [OP1 OP2]
 #out_nash = forrest_solver.solve(nash)
