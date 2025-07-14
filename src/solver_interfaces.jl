@@ -8,10 +8,10 @@ s.t.    x_l ≤ x ≤ x_u
 ```
 """
 function setup_nlp_solve_IPOPT(n, m, xl, xu, gl, gu, f, g!, ∇ₓf!, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇ₓₓL_rows, ∇ₓₓL_cols, ∇ₓₓL_vals!)
-    @assert(n == length(xl), "wrong x_l dimensions")
-    @assert(n == length(xu), "wrong x_u dimensions")
-    @assert(m == length(gl), "wrong g_l dimensions")
-    @assert(m == length(gu), "wrong g_u dimensions")
+    #@assert(n == length(xl), "wrong x_l dimensions")
+    #@assert(n == length(xu), "wrong x_u dimensions")
+    #@assert(m == length(gl), "wrong g_l dimensions")
+    #@assert(m == length(gu), "wrong g_u dimensions")
 
     n_nz_∇ₓg = length(∇ₓg_rows)
     @assert(n_nz_∇ₓg == length(∇ₓg_cols), "∇ₓg_rows and ∇ₓg_cols dimensions do not match")

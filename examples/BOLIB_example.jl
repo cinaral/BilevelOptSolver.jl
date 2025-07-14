@@ -34,14 +34,14 @@ FrankeEtal2018Ex513 (L-O-L-N)
 and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
 """
 # interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, Mirrlees1999 
-b = BOLIB.AiyoshiShimizu1984Ex2()
+b = BOLIB.AiyoshiShimizu1984Ex2() #ShimizuEtal1997b
 
 bop, _ = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
 #x_optimal = [1; 0.957]
 #x_optimal = [-1.; 1]
 elapsed_time = @elapsed begin
-    x, status, iter_count = @btime solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=0, tol=1e-7, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, is_checking_x_agree=false, init_solver="PATH", solver="PATH")
+    x, status, iter_count = solve_bop(bop; max_iter=100, x_init=b.xy_init, verbosity=5, tol=1e-7, norm_dv_len=10, conv_dv_len=2, is_checking_min=true, is_checking_x_agree=false, init_solver="PATH", solver="PATH")
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)

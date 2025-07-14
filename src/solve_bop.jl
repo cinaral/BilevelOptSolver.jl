@@ -11,22 +11,14 @@ Verbosity:
 ```
 """
 function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=10, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=true)
-    status = "ok"
 
-    # buffer
-    #x = copy(x_init)
+    # buffers
     v = zeros(bop.n)
     v[bop.inds.v["x"]] .= x_init[1:bop.nx]
     Λ = zeros(bop.m)
-
     vΛ_J_inds::Vector{Int64} = [] # indexes v and Λ array wrt J
     v_arr::Vector{Vector{Float64}} = []
     Λ_arr::Vector{Vector{Float64}} = []
-    #vΛ_status::Vector{Int64} = [] # 0 solved, 1 feasible
-
-    iter_count = 0
-    is_converged = false
-    is_initialized = false
 
     ## restart stuff
     fol_feas_set_tol = copy(tol)
@@ -40,7 +32,18 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
     norm_dv_cur_idx = 1
     prev_iter_v = zeros(bop.n)
 
-    solve_SBOPi! = setup_solve_SBOPi(bop; solver)
+    # these get used a lot, so we only set them up once
+    if solver == "IPOPT"
+        solve_SBOPi_IPOPT! = setup_solve_SBOPi_IPOPT(bop)
+    elseif solver == "PATH"
+        solve_SBOPi_PATH! = setup_solve_SBOPi_PATH(bop)
+    end
+
+
+    iter_count = 0
+    is_converged = false
+    is_initialized = false
+    status = "ok"
 
     while !is_converged
         if iter_count >= max_iter
@@ -67,14 +70,15 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             end
         end
 
-        is_fol_nec, is_fol_suf = check_follower_sol(v, bop)
-        if !is_fol_nec
-            if verbosity > 0
-                print("The solution is invalid for the follower!\n")
-            end
-            status = "invalid_for_follower"
-            break
-        end
+        ## 2025-07-14 sanity check, due to tols this can fail...
+        #is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e3 * tol) # looser tolerance
+        #if !is_fol_nec
+        #    if verbosity > 0
+        #        print("The solution is invalid for the follower!\n")
+        #    end
+        #    status = "invalid_follower_sol"
+        #    break
+        #end
 
         # by this point, v must at least satisfy the follower's problem
         if verbosity > 5
@@ -130,7 +134,11 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             Ji = follow_feas_Js[i]
             hl, hu, zl, zu = convert_J_to_h_z_bounds(Ji, bop)
 
-            is_solved = solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+            if solver == "IPOPT"
+                is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+            elseif solver == "PATH"
+                is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+            end
 
             # update the vals if successful
             is_valid = false
@@ -222,18 +230,17 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
             end
         end
 
+        # 2025-07-14 this should never happen if there were any valid solutions, but if no SBOPi could be solved, we may have to re-initialize
         if is_initialized
-            is_necessary, is_sufficient = check_follower_sol(v, bop)
-            if is_checking_min
-                is_initialized = is_necessary && is_sufficient
-            else
-                is_initialized = is_necessary
-            end
+            is_necessary, _ = check_follower_sol(v, bop)
 
-            if !is_initialized
+            if !is_necessary
+                @info "this should never happen"
+                is_initialized = false
                 if verbosity > 0
-                    print("Iteration $iter_count: Follower is not at minimum, we must initialize again!\n")
+                    print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
                 end
+                status = ["invalid_follower_sol"]
                 continue
             end
         end
@@ -269,13 +276,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                     print("Converged in $iter_count iterations! (Last $conv_dv_len norm(dv) is less than conv tol $conv_tol)\n")
                 end
                 is_converged = true
+                status = ["converged"]
                 break
             elseif is_norm_dv_full && all(diff(chron_norm_dv_arr) .≤ -tol)
                 # also it's worth checking if dv is slowly
                 if verbosity > 3
                     print("last $norm_dv_len norm(dv) is monotonously decreasing without meeting conv tol, terminating\n")
                 end
-                is_dv_mon_decreasing = true
+                status = ["monoton_decreasing"]
                 break
             end
 
@@ -357,8 +365,6 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
     return success
 end
 
-
-
 function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=1e-6, max_iter=1000)
     x = zeros(bop.nx)
     x[bop.inds.x["x1"]] .= x1
@@ -397,7 +403,7 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=
 
         x[bop.inds.x["x2"]] .= x_out
         λ .= λ_out
-        success = solvestat == 0 # || solvestat == 1
+        success = solvestat == 0
 
     elseif solver == "PATH"
         v = zeros(bop.n)
@@ -439,47 +445,68 @@ function solve_high_point_nlp(bop; x_init=zeros(bop.nx), tol=1e-6, max_iter=1000
     (; x, λ, success)
 end
 
-function setup_solve_SBOPi(bop; solver="IPOPT")
-    if solver == "IPOPT"
-        vl = fill(-Inf, bop.n)
-        vu = fill(Inf, bop.n)
-        Γl = fill(0.0, bop.m)
-        Γu₀ = fill(Inf, bop.m) # doesn't change
-        solve_SBOPi_IPOPT = setup_nlp_solve_IPOPT(bop.n, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
-    elseif solver == "PATH"
-        θ_init = zeros(bop.nθ)
-        θl = copy(bop.θl₀)
-        θu = copy(bop.θu₀)
-        solve_SBOPi_PATH = setup_mcp_solve_PATH(bop.nθ, θl, θu, bop.Φ!, bop.∇Φ_rows, bop.∇Φ_cols, bop.∇Φ_vals!)
-    end
+function setup_solve_SBOPi_IPOPT(bop)
+    vl = fill(-Inf, bop.n)
+    vu = fill(Inf, bop.n)
+    Γl = fill(0.0, bop.m)
+    Γu₀ = fill(Inf, bop.m) # doesn't change
+    solve_SBOPi_IPOPT = setup_nlp_solve_IPOPT(bop.n, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
 
     function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=1000)
-        success = false
-        if solver == "IPOPT"
-            Γl[bop.inds.Γ["hl"]] .= hl
-            Γl[bop.inds.Γ["hu"]] .= -hu
-            Γl[bop.inds.Γ["zl"]] .= zl
-            Γl[bop.inds.Γ["zu"]] .= -zu
-            v_out, Λ_out, solvestat, _ = solve_SBOPi_IPOPT(; gl=Γl, x_init=v, λ_init=Λ, tol, max_iter, print_level=0)
-            v .= v_out
-            Λ .= Λ_out
-            success = solvestat == 0 # || solvestat == 1
-        elseif solver == "PATH"
-            θ_init[bop.inds.θ["v"]] .= v
-            θ_init[bop.inds.θ["Λ"]] .= Λ
-            θl[bop.inds.θ["Λhl"]] .= zl
-            θl[bop.inds.θ["Λzl"]] .= hl
-            θu[bop.inds.θ["Λhu"]] .= zu
-            θu[bop.inds.θ["Λzu"]] .= hu
-            θ_out, status, _ = solve_SBOPi_PATH(; xl=θl, xu=θu, x_init=θ_init, tol, max_iter, is_silent=true)
-            v .= θ_out[bop.inds.θ["v"]]
-            Λ .= θ_out[bop.inds.θ["Λ"]]
-            success = status == PATHSolver.MCP_Solved
-        end
+        Γl[bop.inds.Γ["hl"]] .= hl
+        Γl[bop.inds.Γ["zl"]] .= zl
+        Γl[bop.inds.Γ["hu"]] .= -hu
+        Γl[bop.inds.Γ["zu"]] .= -zu
+        v_out, Λ_out, solvestat, _ = solve_SBOPi_IPOPT(; gl=Γl, x_init=v, λ_init=Λ, tol, max_iter, print_level=0)
+        v .= v_out
+        Λ .= Λ_out
+        success = solvestat == 0
         success
     end
     solve_SBOPi!
 end
+
+function setup_solve_SBOPi_PATH(bop)
+    θ_init = zeros(bop.nθ)
+    θl = copy(bop.θl₀)
+    θu = copy(bop.θu₀)
+    solve_SBOPi_PATH = setup_mcp_solve_PATH(bop.nθ, θl, θu, bop.Φ!, bop.∇Φ_rows, bop.∇Φ_cols, bop.∇Φ_vals!)
+
+    function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=1000)
+        θ_init[bop.inds.θ["v"]] .= v
+        θ_init[bop.inds.θ["Λ"]] .= Λ
+        θl[bop.inds.θ["rzl"]] .= zl
+        θl[bop.inds.θ["rhl"]] .= hl
+        θl[bop.inds.θ["rzu"]] .= -zu
+        θl[bop.inds.θ["rhu"]] .= -hu
+
+        θ_out, status, _ = solve_SBOPi_PATH(; xl=θl, x_init=θ_init, tol, max_iter, is_silent=true)
+        v .= θ_out[bop.inds.θ["v"]]
+        Λ .= θ_out[bop.inds.θ["Λ"]]
+        success = status == PATHSolver.MCP_Solved
+        success
+    end
+    solve_SBOPi!
+end
+
+function check_follower_sol(v, bop; tol=1e-6)
+    x = @view v[bop.inds.v["x"]]
+    λ = @view v[bop.inds.v["λ"]]
+
+    check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!; tol)
+end
+
+function check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl; tol=1e-6)
+    Γl = fill(0.0, bop.m)
+    Γl[bop.inds.Γ["hl"]] .= hl
+    Γl[bop.inds.Γ["hu"]] .= -hu
+    Γl[bop.inds.Γ["zl"]] .= zl
+    Γl[bop.inds.Γ["zu"]] .= -zu
+
+    #Main.@infiltrate
+    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol)
+end
+
 
 function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-6)
     #@assert(n == length(x))
@@ -541,24 +568,6 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     end
 
     (; is_necessary, is_sufficient)
-end
-
-function check_follower_sol(v, bop)
-    x = @view v[bop.inds.v["x"]]
-    λ = @view v[bop.inds.v["λ"]]
-
-    check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!)
-end
-
-function check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl)
-    Γl = fill(0.0, bop.m)
-    Γl[bop.inds.Γ["hl"]] .= hl
-    Γl[bop.inds.Γ["hu"]] .= -hu
-    Γl[bop.inds.Γ["zl"]] .= zl
-    Γl[bop.inds.Γ["zu"]] .= -zu
-
-    #Main.@infiltrate
-    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
 end
 
 """

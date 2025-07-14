@@ -49,7 +49,7 @@ struct BilevelOptProb
     ∇²ᵥL1_rows::Vector{Int}
     ∇²ᵥL1_cols::Vector{Int}
     ∇²ᵥL1_vals!::Function # ∇²ᵥL1_vals!(out, v, Λ, of)
-    # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
+    # SBOPi MCP: θ := [v; Λ; r] s.t. Φ ⟂ θu ≥ θ ≥ θl
     θl₀::Vector{Float64} # default θ bounds
     θu₀::Vector{Float64}
     Φ!::Function # Φ!(out, v, Λ)
@@ -109,7 +109,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     nz = n2 + m2
     n = n1 + nz
     m = m1 + 4 * nz
-    nθ = n + m
+    nθ = n + 2*m
 
     x1_sym = Symbolics.@variables(x[1:n1])[1] |> Symbolics.scalarize
     x2_sym = Symbolics.@variables(y[1:n2])[1] |> Symbolics.scalarize
@@ -160,7 +160,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     # follower MCP: z := [x₂; λ] s.t. h ⟂ zu ≥ z ≥ zl
     # by default x₂ is free and λ ≥ 0, but these will be overwritten later
     ∇ₓ₂L2_sym = substitute(∇ₓ₂L2_sym, Dict([of2_sym => 1.0]))
-    zl₀ = [fill(-Inf, n2); zeros(m2)] # default z lb
+    zl₀ = [fill(-Inf, n2); zeros(m2)] # z lb does not change
     zu₀ = fill(Inf, nz) # default z ub
     if nz > 0
         h_sym = [∇ₓ₂L2_sym; g_sym]
@@ -178,8 +178,9 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇h_rows, ∇h_cols, ∇h_vals_sym) = SparseArrays.findnz(∇h_sym)
     ∇h_vals! = Symbolics.build_function(∇h_vals_sym, vp_sym; expression=Val{false})[2]
 
-    # SBOPi NLP: min F(v) s.t. Γ := [G; h; -h; z; -z] ≥ Γlᵢ 
-    Γ_sym = [G_sym; h_sym; -h_sym; z_sym; -z_sym]
+    # SBOPi NLP: min F(v) s.t. Γ := [G; h; z; -h; -z] ≥ Γlᵢ 
+    # we append [-h; -z] to keep the corresponding Λ ≥ 0 without specifying upper bounds
+    Γ_sym = [G_sym; h_sym; z_sym; -h_sym; -z_sym]
     @assert(m == length(Γ_sym))
     Fv = Symbolics.build_function(F_sym, vp_sym; expression=Val{false}) # for convenience: F that takes v as argument 
     Γ! = Symbolics.build_function(Γ_sym, vp_sym; expression=Val(false))[2]
@@ -206,17 +207,19 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     (∇²ᵥL1_rows, ∇²ᵥL1_cols, ∇²ᵥL1_vals_sym) = SparseArrays.findnz(∇²ᵥL1_sym)
     ∇²ᵥL1_vals! = Symbolics.build_function(∇²ᵥL1_vals_sym, vp_sym, Λ_sym, of1_sym; expression=Val{false})[2]
 
-    # SBOPi MCP: θ := [v; Λ] s.t. Φ ⟂ θu ≥ θ ≥ θl
-    # by default v is free and Λ ≥ 0, but these will be overwritten later
-    θ_sym = [v_sym; Λ_sym]
+    # SBOPi MCP: θ := [v; Λ; r] s.t. Φ ⟂ θu ≥ θ ≥ θl
+    # in order to conveniently specify the bounds the Γ := [G; h; z; -h; -z], we introduce its slack, r ⟂ Λ
+    # this way v and Λ is free, and by default r ≥ 0, but r bounds will be overwritten later
+    # TODO 2025-07-14: this is quite a few more problem variables than needed, but we wish to keep Λ identical to the NLP interpretation for the purposes of checking optimality conditions
+    r_sym = Symbolics.@variables(r[1:m])[1] |> Symbolics.scalarize
+    θ_sym = [v_sym; Λ_sym; r_sym]
     @assert(nθ == length(θ_sym))
-    θp_sym = Num[v_sym; Λ_sym; p_sym]
-    θl₀ = [fill(-Inf, n); zeros(m)] # default θ lb
-    θl₀[inds.θ["Λhl"]] .= zl₀
+    θp_sym = Num[v_sym; p_sym; Λ_sym; r_sym]
+    θl₀ = [fill(-Inf, n + m); zeros(m)] # default θ lb
     θu₀ = fill(Inf, nθ) # default θ ub
-    θu₀[inds.θ["Λhu"]] .= zu₀
     ∇ᵥL1_sym = substitute(∇ᵥL1_sym, Dict([of1_sym => 1.0]))
-    Φ_sym = [∇ᵥL1_sym; Γ_sym]
+    Γ_eq_sym = Γ_sym .- r_sym
+    Φ_sym = [∇ᵥL1_sym; Γ_eq_sym; Λ_sym]
     Φ! = Symbolics.build_function(Φ_sym, θp_sym; expression=Val(false))[2]
     ∇Φ_sym = Symbolics.sparsejacobian(Φ_sym, θ_sym)
     ∇Φ_size = size(∇Φ_sym)
@@ -362,20 +365,27 @@ function define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
     Γ_inds = Dict{String,UnitRange{Int64}}([
         ("G" => 1:m1),
         ("hl" => m1+1:m1+nz),
-        ("hu" => m1+nz+1:m1+2*nz),
-        ("zl" => m1+2*nz+1:m1+3*nz),
+        ("zl" => m1+nz+1:m1+2*nz),
+        ("hu" => m1+2*nz+1:m1+3*nz),
         ("zu" => m1+3*nz+1:m1+4*nz)
     ])
 
     θ_inds = Dict{String,UnitRange{Int64}}([
         ("v" => 1:n),
-        ("Λ" => n+1:n+m),
-        ("p" => n+m+1:n+m+np),
-        ("p" => n+m+1:n+m+np),
-        ("Λhl" => n+m1+1:n+m1+nz),
-        ("Λhu" => n+m1+nz+1:n+m1+2*nz),
-        ("Λzl" => n+m1+2*nz+1:n+m1+3*nz),
-        ("Λzu" => n+m1+3*nz+1:n+m1+4*nz)
+        ("p" => n+1:n+np),
+        ("Λ" => n+np+1:n+np+m),
+        ("r" => n+np+m+1: n+np+2*m),
+        ("z", n1+1:n1+nz),
+        ("ΛG" => n+np+1:n+m1),
+        ("Λhl" => n+np+m1+1:n+m1+nz),
+        ("Λzl" => n+np+m1+nz+1:n+m1+2*nz),
+        ("Λhu" => n+np+m1+2*nz+1:n+m1+3*nz),
+        ("Λzu" => n+np+m1+3*nz+1:n+m1+4*nz),
+        ("rG" => n+np+m+1:n+np+m+m1),
+        ("rhl" => n+np+m+m1+1:n+m+m1+nz),
+        ("rzl" => n+np+m+m1+nz+1:n+m+m1+2*nz),
+        ("rhu" => n+np+m+m1+2*nz+1:n+m+m1+3*nz),
+        ("rzu" => n+np+m+m1+3*nz+1:n+m+m1+4*nz),
     ])
 
     inds = (; x=x_inds, z=z_inds, v=v_inds, Γ=Γ_inds, θ=θ_inds)
