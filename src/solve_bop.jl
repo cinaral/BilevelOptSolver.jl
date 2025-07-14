@@ -10,11 +10,12 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=100, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=100, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2)
 
     # buffers
-    v = zeros(bop.n)
+    v = zeros(bop.n + bop.np)
     v[bop.inds.v["x"]] .= x_init[1:bop.nx]
+    v[bop.inds.v["p"]] .= param
     Λ = zeros(bop.m)
     vΛ_J_inds::Vector{Int64} = [] # indexes v and Λ array wrt J
     v_arr::Vector{Vector{Float64}} = []
@@ -167,7 +168,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                     print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
                 end
                 is_prev_v_set = false
-                norm_dv_arr .= 0.
+                norm_dv_arr .= 0.0
                 norm_dv_cur_idx = 1
                 status = "uninitialized"
             end
@@ -335,7 +336,7 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
     x1 = @view v[bop.inds.v["x1"]]
     x2 = @view v[bop.inds.v["x2"]]
     λ = zeros(bop.m2)
-    (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol)
+    (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, param=v[bop.inds.v["p"]])
 
     # if failure it may be that the feasible region of the follower is empty for x₁
     if !success
@@ -347,7 +348,7 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
         x2 = @view x[bop.inds.x["x2"]]
 
         if is_x_feasible # we try again
-            (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol)
+            (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, param=v[bop.inds.v["p"]])
         else
             if verbosity > 0
                 print("Failed resetting x to a bilevel feasible point, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
@@ -363,9 +364,10 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
     return success
 end
 
-function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=1e-6, max_iter=1000)
-    x = zeros(bop.nx)
+function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), param=zeros(bop.np), solver="IPOPT", tol=1e-6, max_iter=1000)
+    x = zeros(bop.nx + bop.np)
     x[bop.inds.x["x1"]] .= x1
+    x[bop.inds.x["p"]] .= param
     λ = zeros(bop.m2)
     success = false
 
@@ -429,13 +431,13 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), solver="IPOPT", tol=
     (; x, λ, success)
 end
 
-function solve_high_point_nlp(bop; x_init=zeros(bop.nx), tol=1e-6, max_iter=1000)
-    xl = fill(-Inf, bop.n1 + bop.n2)
-    xu = fill(Inf, bop.n1 + bop.n2)
+function solve_high_point_nlp(bop; x_init=zeros(bop.nx + bop.np), tol=1e-6, max_iter=1000)
+    xl = fill(-Inf, bop.n1 + bop.n2 + bop.np)
+    xu = fill(Inf, bop.n1 + bop.n2 + bop.np)
     Gg_l = fill(0.0, bop.m1 + bop.m2)
     Gg_u = fill(Inf, bop.m1 + bop.m2)
 
-    solve_high_point_nlp = setup_nlp_solve_IPOPT(bop.nx, bop.m1 + bop.m2, xl, xu, Gg_l, Gg_u, bop.F, bop.Gg!, bop.∇ₓF!, bop.∇ₓGg_rows, bop.∇ₓGg_cols, bop.∇ₓGg_vals!, bop.∇²ₓL3_rows, bop.∇²ₓL3_cols, bop.∇²ₓL3_vals!)
+    solve_high_point_nlp = setup_nlp_solve_IPOPT(bop.nx + bop.np, bop.m1 + bop.m2, xl, xu, Gg_l, Gg_u, bop.F, bop.Gg!, bop.∇ₓF!, bop.∇ₓGg_rows, bop.∇ₓGg_cols, bop.∇ₓGg_vals!, bop.∇²ₓL3_rows, bop.∇²ₓL3_cols, bop.∇²ₓL3_vals!)
 
     x, λ, solvestat, _ = solve_high_point_nlp(; x_init, tol, max_iter, print_level=0)
 
