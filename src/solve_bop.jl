@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=100, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2)
+function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=100, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2)
 
     # buffers
     v = zeros(bop.n)
@@ -28,6 +28,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
     is_prev_v_set = false
     is_norm_dv_full = false
     no_sol_counter = 0
+    init_counter = 0
     norm_dv_arr = zeros(norm_dv_len)
     chron_norm_dv_arr = copy(norm_dv_arr)
     norm_dv_cur_idx = 1
@@ -59,6 +60,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
         end
 
         if !is_initialized
+            init_counter += 1
+            if init_counter > max_inits
+                status = "max_init"
+                break
+            end
+
             is_initialized = initialize_z!(v, bop; verbosity, init_solver, tol)
 
             if !is_initialized
@@ -143,11 +150,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
 
         # solved none, we have to check if we have to re-initialize
         if length(vΛ_J_inds) == 0
+            is_sol_valid = false
             no_sol_counter += 1
             if verbosity > 1
                 print("Failed to solve any SBOPi!\n")
             end
-            if no_sol_counter >= max_no_sols
+            if no_sol_counter > max_no_sols
                 status = "max_no_sols"
                 break
             end
@@ -158,10 +166,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
                 if verbosity > 0
                     print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
                 end
+                is_prev_v_set = false
+                norm_dv_arr .= 0.
+                norm_dv_cur_idx = 1
                 status = "uninitialized"
             end
             continue
         end
+        no_sol_counter = 0
 
         # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
         is_all_solved = length(vΛ_J_inds) == n_J
@@ -300,7 +312,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), tol=1e-6, fol_feas_set_tol_max=1e-
 
     x = @view v[bop.inds.v["x"]]
     # final sanity check
-    is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop)
+    is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop; tol=1e3 * tol)
 
     if is_sol_valid
         if !is_fol_necessary || (is_checking_min && !is_fol_sufficient) || !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
