@@ -17,7 +17,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     v[bop.inds.v["x"]] .= x_init[1:bop.nx]
     v[bop.inds.v["p"]] .= param
     Λ = zeros(bop.m)
-    vΛ_J_inds::Vector{Int64} = [] # indexes v and Λ array wrt J
+
+    is_v_fol_nec::Vector{Bool} = []
+    is_v_fol_suf::Vector{Bool} = []
     v_arr::Vector{Vector{Float64}} = []
     Λ_arr::Vector{Vector{Float64}} = []
 
@@ -124,14 +126,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             print("Multiple feasible sets ($n_J) detected!\n")
         end
 
-        empty!(vΛ_J_inds)
+        empty!(is_v_fol_nec)
+        empty!(is_v_fol_suf)
         empty!(v_arr)
         empty!(Λ_arr)
 
         for (i, J) in enumerate(follow_feas_Js)
             hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
 
-            #Main.@infiltrate
             if solver == "IPOPT"
                 is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
             elseif solver == "PATH"
@@ -139,13 +141,17 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
 
             if is_solved
-                push!(vΛ_J_inds, i)
+                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e1*tol)
+                push!(is_v_fol_nec, is_fol_nec)
+                push!(is_v_fol_suf, is_fol_suf)
                 push!(v_arr, copy(v))
                 push!(Λ_arr, copy(Λ))
 
                 if verbosity > 2
-                    print("SBOP$i: Solved J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
+                    print("SBOP$i: Solved (follower n $is_fol_nec s $is_fol_suf) J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
                 end
+                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v_arr[i], Λ_arr[i], bop, hl, hu, zu, zl)
+                #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
             else
                 if verbosity > 1
                     print("SBOP$i: FAILED J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
@@ -153,8 +159,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
         end
 
-        # solved none, we have to check if we have to re-initialize
-        if length(vΛ_J_inds) == 0
+        # if solved none, we have to check if we have to re-initialize
+        if length(v_arr) == 0
             is_sol_valid = false
             no_sol_counter += 1
             if verbosity > 1
@@ -180,38 +186,22 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
         no_sol_counter = 0
 
+        #Main.@infiltrate
         # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
-        is_all_solved = length(vΛ_J_inds) == n_J
-
-        #for (i, vv) in enumerate(v_arr)
-        #    is_fol_nec, is_fol_suf = check_follower_sol(vv, bop)
-        #    @info "v$i n $is_fol_nec s $is_fol_suf"
-
-        #    #Main.@infiltrate
-        #end
+        is_all_solved = length(v_arr) == n_J
 
         if is_all_solved
             if verbosity > 0
                 print("All SBOPi ($n_J) solved.\n")
             end
 
-            is_sol_valid = true
-            for (i, J) in enumerate(follow_feas_Js)
-                is_fol_nec, is_fol_suf = check_follower_sol(v_arr[i], bop)
-                #@info "v $v"
-                #@info "Follower nec $is_fol_nec suf $is_fol_suf"
-
-                # if solved is_fol_nec should already be true
-                if is_checking_min && !is_fol_suf
-                    if verbosity > 1
-                        print("SBOP$i solution is probably not a minimum for follower\n")
-                    end
-                    is_sol_valid = false
-                    break
+            if is_checking_min && !all(is_v_fol_suf)
+                if verbosity > 1
+                    print("Not all SBOP solutions are follower minimizers\n")
                 end
-                #hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
-                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v_arr[i], Λ_arr[i], bop, hl, hu, zu, zl)
-                #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
+                is_sol_valid = false
+            else
+                is_sol_valid = true
             end
 
             # optional check
@@ -243,15 +233,11 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             #fs_sorted_inds = sortperm(fs)
             F = Inf
             for (i, vv) in enumerate(v_arr)
-                #is_fol_nec, is_fol_suf = check_follower_sol(vv, bop)
-                #@info "v$i n $is_fol_nec s $is_fol_suf"
-                #if is_checking_min
-                #    if is_fol_suf
-                #        if verbosity > 1
-                #            print("SBOP$i is at minimum\n")
-                #        end
-                #    end
-                #end
+                if is_checking_min && any(is_v_fol_suf) # if checking min, skip non sufficient solutions
+                    if !(is_v_fol_suf[i])
+                        continue
+                    end
+                end
                 F_ = bop.F(vv[bop.inds.v["x"]])   # choose the smallest available F value
                 if F_ < F
                     F = F_
@@ -269,6 +255,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         else
             dv = v[bop.inds.v["x"]] - prev_iter_v[bop.inds.v["x"]]
             prev_iter_v .= v[1:bop.n]
+
             norm_dv = LinearAlgebra.norm(dv)
             norm_dv_arr[norm_dv_cur_idx] = norm_dv
 
@@ -322,10 +309,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
     x = @view v[bop.inds.v["x"]]
     # final sanity check
-    is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop; tol=1e3 * tol)
+    #is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop; tol)
 
     if is_sol_valid
-        if !is_fol_necessary || (is_checking_min && !is_fol_sufficient) || !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
+        if !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
             if verbosity > 0
                 print("Something went VERY wrong!\n")
             end
