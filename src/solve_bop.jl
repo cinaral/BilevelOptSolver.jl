@@ -197,7 +197,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
             if is_checking_min && !all(is_v_fol_suf)
                 if verbosity > 1
-                    print("Not all SBOP solutions are follower minimizers\n")
+                    print("Not all SBOP solutions confirmed to be follower minimizers\n")
                 end
                 is_sol_valid = false
             else
@@ -245,7 +245,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                     Λ .= Λ_arr[i]
                 end
             end
-            #continue
         end
 
         # we check if the solution has converged even if the solution is not valid
