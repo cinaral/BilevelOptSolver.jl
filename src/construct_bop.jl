@@ -214,7 +214,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     r_sym = Symbolics.@variables(r[1:m])[1] |> Symbolics.scalarize
     θ_sym = [v_sym; Λ_sym; r_sym]
     @assert(nθ == length(θ_sym))
-    θp_sym = Num[v_sym; p_sym; Λ_sym; r_sym]
+    θp_sym = Num[v_sym; Λ_sym; r_sym; p_sym]
     θl₀ = [fill(-Inf, n + m); zeros(m)] # default θ lb
     θu₀ = fill(Inf, nθ) # default θ ub
     ∇ᵥL1_sym = substitute(∇ᵥL1_sym, Dict([of1_sym => 1.0]))
@@ -372,20 +372,20 @@ function define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
 
     θ_inds = Dict{String,UnitRange{Int64}}([
         ("v" => 1:n),
-        ("p" => n+1:n+np),
-        ("Λ" => n+np+1:n+np+m),
-        ("r" => n+np+m+1: n+np+2*m),
+        ("Λ" => n+1:n+m),
+        ("r" => n+m+1: n+2*m),
+        ("p" => n+2*m+1:n+2*m+np),
         ("z", n1+1:n1+nz),
-        ("ΛG" => n+np+1:n+m1),
-        ("Λhl" => n+np+m1+1:n+m1+nz),
-        ("Λzl" => n+np+m1+nz+1:n+m1+2*nz),
-        ("Λhu" => n+np+m1+2*nz+1:n+m1+3*nz),
-        ("Λzu" => n+np+m1+3*nz+1:n+m1+4*nz),
-        ("rG" => n+np+m+1:n+np+m+m1),
-        ("rhl" => n+np+m+m1+1:n+m+m1+nz),
-        ("rzl" => n+np+m+m1+nz+1:n+m+m1+2*nz),
-        ("rhu" => n+np+m+m1+2*nz+1:n+m+m1+3*nz),
-        ("rzu" => n+np+m+m1+3*nz+1:n+m+m1+4*nz),
+        ("ΛG" => n+1:n+m1),
+        ("Λhl" => n+m1+1:n+m1+nz),
+        ("Λzl" => n+m1+nz+1:n+m1+2*nz),
+        ("Λhu" => n+m1+2*nz+1:n+m1+3*nz),
+        ("Λzu" => n+m1+3*nz+1:n+m1+4*nz),
+        ("rG" => n+m+1:n+m+m1),
+        ("rhl" => n+m+m1+1:n+m+m1+nz),
+        ("rzl" => n+m+m1+nz+1:n+m+m1+2*nz),
+        ("rhu" => n+m+m1+2*nz+1:n+m+m1+3*nz),
+        ("rzu" => n+m+m1+3*nz+1:n+m+m1+4*nz),
     ])
 
     inds = (; x=x_inds, z=z_inds, v=v_inds, Γ=Γ_inds, θ=θ_inds)

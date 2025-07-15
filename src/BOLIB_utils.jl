@@ -37,15 +37,14 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         p = getfield(Main.BOLIB, Symbol(prob))()
 
         bop, _ = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
+        # dry run for @elapsed...
+        is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0);
 
         # print iter info
         if prob_count % 20 == 0
             print("id name: success (status), iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
         end
         print("$(prob_count+1)\t $prob:\t ")
-
-        # dry run for @elapsed...
-        solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0)
 
         elapsed_time = @elapsed begin
             is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)

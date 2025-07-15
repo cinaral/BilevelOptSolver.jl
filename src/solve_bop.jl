@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e-0, x_agree_tol=1e-3, max_iter=100, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-3, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e-2, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2)
 
     # buffers
     v = zeros(bop.n + bop.np)
@@ -64,6 +64,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             init_counter += 1
             if init_counter > max_inits
                 status = "max_init"
+                if verbosity > 0
+                    print("Max initializations ($init_counter) reached!\n")
+                end
                 break
             end
 
@@ -128,6 +131,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         for (i, J) in enumerate(follow_feas_Js)
             hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
 
+            #Main.@infiltrate
             if solver == "IPOPT"
                 is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
             elseif solver == "PATH"
@@ -178,6 +182,13 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
         # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
         is_all_solved = length(vΛ_J_inds) == n_J
+
+        #for (i, vv) in enumerate(v_arr)
+        #    is_fol_nec, is_fol_suf = check_follower_sol(vv, bop)
+        #    @info "v$i n $is_fol_nec s $is_fol_suf"
+
+        #    #Main.@infiltrate
+        #end
 
         if is_all_solved
             if verbosity > 0
@@ -232,10 +243,13 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             #fs_sorted_inds = sortperm(fs)
             F = Inf
             for (i, vv) in enumerate(v_arr)
+                #is_fol_nec, is_fol_suf = check_follower_sol(vv, bop)
+                #@info "v$i n $is_fol_nec s $is_fol_suf"
                 #if is_checking_min
-                #    _, is_fol_suf = check_follower_sol(vv, bop)
-                #    if !is_fol_suf
-                #        continue
+                #    if is_fol_suf
+                #        if verbosity > 1
+                #            print("SBOP$i is at minimum\n")
+                #        end
                 #    end
                 #end
                 F_ = bop.F(vv[bop.inds.v["x"]])   # choose the smallest available F value
@@ -250,11 +264,11 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
         # we check if the solution has converged even if the solution is not valid
         if !is_prev_v_set
-            prev_iter_v .= v
+            prev_iter_v .= v[1:bop.n]
             is_prev_v_set = true
         else
             dv = v[bop.inds.v["x"]] - prev_iter_v[bop.inds.v["x"]]
-            prev_iter_v .= v
+            prev_iter_v .= v[1:bop.n]
             norm_dv = LinearAlgebra.norm(dv)
             norm_dv_arr[norm_dv_cur_idx] = norm_dv
 
@@ -306,12 +320,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
     end
 
-    if is_converged
-        if verbosity > 1
-            print("\n")
-        end
-    end
-
     x = @view v[bop.inds.v["x"]]
     # final sanity check
     is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop; tol=1e3 * tol)
@@ -325,6 +333,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             is_sol_valid = false
         end
     end
+    if verbosity > 1
+        print("\n")
+    end
+
     (; is_sol_valid, x, iter_count, status)
 end
 
@@ -358,7 +370,7 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
     end
 
     if success
-        v[bop.inds.v["x"]] .= x
+        v[bop.inds.v["x"]] .= x[bop.inds.v["x"]]
         v[bop.inds.v["λ"]] .= λ
     end
 
@@ -447,11 +459,11 @@ function solve_high_point_nlp(bop; x_init=zeros(bop.nx + bop.np), tol=1e-6, max_
 end
 
 function setup_solve_SBOPi_IPOPT(bop)
-    vl = fill(-Inf, bop.n)
-    vu = fill(Inf, bop.n)
+    vl = fill(-Inf, bop.n + bop.np)
+    vu = fill(Inf, bop.n + bop.np)
     Γl = fill(0.0, bop.m)
     Γu₀ = fill(Inf, bop.m) # doesn't change
-    solve_SBOPi_IPOPT = setup_nlp_solve_IPOPT(bop.n, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
+    solve_SBOPi_IPOPT = setup_nlp_solve_IPOPT(bop.n + bop.np, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
 
     function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=1000)
         Γl[bop.inds.Γ["hl"]] .= hl
@@ -459,7 +471,7 @@ function setup_solve_SBOPi_IPOPT(bop)
         Γl[bop.inds.Γ["hu"]] .= -hu
         Γl[bop.inds.Γ["zu"]] .= -zu
         v_out, Λ_out, solvestat, _ = solve_SBOPi_IPOPT(; gl=Γl, x_init=v, λ_init=Λ, tol, max_iter, print_level=0)
-        v .= v_out
+        v[1:bop.n] .= v_out[1:bop.n]
         Λ .= Λ_out
         success = solvestat == 0
         success
@@ -473,7 +485,7 @@ function setup_solve_SBOPi_PATH(bop)
     θu = copy(bop.θu₀)
     solve_SBOPi_PATH = setup_mcp_solve_PATH(bop.nθ, θl, θu, bop.Φ!, bop.∇Φ_rows, bop.∇Φ_cols, bop.∇Φ_vals!)
 
-    function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=1000)
+    function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=5000)
         θ_init[bop.inds.θ["v"]] .= v
         θ_init[bop.inds.θ["Λ"]] .= Λ
         θl[bop.inds.θ["rzl"]] .= zl
