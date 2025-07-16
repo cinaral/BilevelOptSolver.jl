@@ -141,20 +141,19 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
 
             if is_solved
-                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e1*tol)
+                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e1 * tol)
+                is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl; tol=1e1 * tol) # is_SBOPi_suf is always false
                 push!(is_v_fol_nec, is_fol_nec)
                 push!(is_v_fol_suf, is_fol_suf)
                 push!(v_arr, copy(v))
                 push!(Λ_arr, copy(Λ))
 
                 if verbosity > 2
-                    print("SBOP$i: Solved (follower n $is_fol_nec s $is_fol_suf) J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
+                    print("SBOP$i: Solved nc: $is_SBOPi_nec sf: $is_SBOPi_suf (follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2])\n")
                 end
-                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v_arr[i], Λ_arr[i], bop, hl, hu, zu, zl)
-                #@info "SBOPi nec $is_SBOPi_nec suf $is_SBOPi_suf"
             else
                 if verbosity > 1
-                    print("SBOP$i: FAILED J1/2/3/4: $(J[1])/$(J[2])/$(J[3])/$(J[4])\n")
+                    print("SBOP$i: FAILED J1: $(J[1]) J2: $(J[2])\n")
                 end
             end
         end
@@ -499,11 +498,10 @@ end
 function check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl; tol=1e-6)
     Γl = fill(0.0, bop.m)
     Γl[bop.inds.Γ["hl"]] .= hl
-    Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zl"]] .= zl
+    Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zu"]] .= -zu
 
-    #Main.@infiltrate
     check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol)
 end
 
@@ -534,6 +532,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         is_sufficient = true
         act_inds = isapprox.(g, 0; atol=2 * tol)
         #act_inds = all(λ .≥ 0 + tol) # strictly active indices??
+        #Main.@infiltrate
         if any(act_inds)
             for j in findall(act_inds .> 0)
                 for k in 1:n
