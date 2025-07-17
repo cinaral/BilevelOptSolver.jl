@@ -6,7 +6,8 @@ using BenchmarkTools
 using ProfileView
 
 function solve_bopper()
-    b = BOLIB.DempeDutta2012Ex24()
+    #b = BOLIB.DempeDutta2012Ex24()
+	b = DempeDutta2012Ex34()
     bop, syms = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g, verbosity=0)
 
     x1 = b.xy_init[bop.inds.x["x1"]]
@@ -85,7 +86,7 @@ function solve_bopper()
         #	print("$(v[bop.inds.v["x"]]) Solved nc: $is_SBOPi_nec sf: $is_SBOPi_suf (follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2])\n")
         #end
         elapsed_time = @elapsed begin
-            is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol, norm_dv_len=10, conv_dv_len=1, is_checking_min=false, is_checking_x_agree=false, init_solver="IPOPT", solver="IPOPT")
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol, norm_dv_len=10, conv_dv_len=1, is_checking_min=false, is_checking_x_agree=false, init_solver="IPOPT", solver="IPOPT")
         end
 
         is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)

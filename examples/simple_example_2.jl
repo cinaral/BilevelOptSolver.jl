@@ -35,7 +35,7 @@ function g(x)
 end
 
 bop, _ = construct_bop(n₁, n₂, F, G, f, g);
-is_sol_valid, x, iter_count, status = solve_bop(bop; x_init, solver="PATH", is_checking_min=false, verbosity=5)
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, solver="PATH", is_checking_min=false, verbosity=5)
 
 Ff = [bop.F(x); bop.f(x)]
 if is_sol_valid
