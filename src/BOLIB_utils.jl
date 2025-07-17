@@ -7,7 +7,7 @@ import BOLIB
 
 using DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree=false, init_solver="PATH", solver="PATH", tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree=false, init_solver="PATH", solver="PATH", tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false, is_always_hp=false)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -38,7 +38,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
 
         bop, _ = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
         # dry run for @elapsed...
-        is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0);
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver, is_always_hp)
 
         # print iter info
         if prob_count % 20 == 0
@@ -47,7 +47,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         print("$(prob_count+1)\t $prob:\t ")
 
         elapsed_time = @elapsed begin
-            is_sol_valid, x, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, norm_dv_len, conv_dv_len, is_checking_min, init_solver, solver, is_always_hp)
         end
 
         is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong = rate_BOLIB_result(p, bop, x)
