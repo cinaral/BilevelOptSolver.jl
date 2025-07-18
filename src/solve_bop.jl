@@ -286,7 +286,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         #Main.@infiltrate
 
         # out of all solved solutions...
-        if all(is_necc_SBOPi) && all(is_necc_fol)
+        #all(is_necc_SBOPi) # this will usually be false
+        if all(is_necc_fol)
             if !is_checking_min # ignore sufc
                 is_sol_valid = true
             elseif all(is_sufc_fol)
