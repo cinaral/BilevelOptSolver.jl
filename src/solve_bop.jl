@@ -598,17 +598,40 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     is_complement = all(isapprox.(g .* λ, 0; atol=tol)) # complementarity
     is_primal_feas = all(g .≥ gl .- tol)
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
-    is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
+    #is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
 
-    # sufficient conditions
-    if is_necessary
-        is_sufficient = true
-        act_inds = isapprox.(g, 0; atol=tol)
-        #act_inds = all(λ .≥ 0 + tol) # strictly active indices??
-        #Main.@infiltrate
-        if any(act_inds)
-            for j in findall(act_inds .> 0)
+
+    active_js = findall(isapprox.(g, 0; atol=tol)) # active indices
+    is_necessary_2nd_ord = false
+    is_sufficient = false
+
+    # TODO: 2025-07-18: not sure if I should use tol in PSD equalities here
+    if isposdef(∇²ₓL) # PD shortcut
+        is_necessary_2nd_ord = true
+
+        if isempty(active_js) # unconstrained problem
+            is_sufficient = true
+        else
+            if all([λ[j] ≥ tol for j in active_js]) # all active multipliers must be strictly positive
+                is_sufficient = true
+            end
+        end
+    else
+        if isempty(active_js) # unconstrained problem
+            if eigmin(Matrix(∇²ₓL)) ≥ 0.0  # not sure about tol here
+                is_necessary_2nd_ord = true
+                is_sufficient = false
+            end
+        else
+            # now we need to consider all w s.t. ∇ₓgⱼ' w = 0 for all active j, but it's tricky
+            # like w = Vector(∇ₓg[j, :])' \ 0 would always return 0 so need something else to check
+            is_necessary_2nd_ord = true
+            is_sufficient = true
+
+            for j in active_js
                 for k in 1:n
+                    # we build a set of incomplete tangent w with a simple heuristic
+                    # e.g. ∇ₓg[j, :] = [0; 3; 6], we check w = [1; 0; 0], [1; -2; 1], [1; 1; -.5]
                     if isapprox(∇ₓg[j, k], 0; atol=tol)
                         w = zeros(n)
                         w[k] = 1.0
@@ -618,27 +641,26 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
                         offset = w' * ∇ₓg[j, :]
                         w[k] = -offset / ∇ₓg[j, k]
                     end
-
-                    if !isapprox(w' * ∇ₓg[j, :], 0; atol=tol)
-                        #Main.@infiltrate
-                    end
                     # sanity checks, there might be a smarter way to get the tangent cone 
                     @assert(isapprox(w' * ∇ₓg[j, :], 0; atol=tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
+
+                    if w' * ∇²ₓL * w < 0.0 # w' * ∇²ₓL * w ≥ 0
+                        is_necessary_2nd_ord = false
+                    end
 
                     # w ≠ 0 && λ ≠ 0 && w' * ∇²ₓL * w > 0 
                     if all(isapprox.(w, 0; atol=tol)) || isapprox(λ[j], 0; atol=tol) || w' * ∇²ₓL * w ≤ 0.0
                         is_sufficient = false
                     end
+                    Main.@infiltrate
                 end
             end
-        else
-            # if there are no active indices this is the unconstrained problem
-            is_sufficient = isposdef(∇²ₓL)
         end
-    else
-        is_sufficient = false # no need to check the sufficiency condition if necessary cond is not met
     end
+ 
 
+    is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
+    is_sufficient = is_necessary && is_sufficient
     (; is_necessary, is_sufficient)
 end
 

@@ -34,7 +34,7 @@ FrankeEtal2018Ex513 (L-O-L-N)
 and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
 """
 # interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, Mirrlees1999 
-b = BOLIB.Bard1988Ex2() 
+b = BOLIB.Mirrlees1999() 
 
 bop, syms = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g; verbosity=0, np=0)
 
