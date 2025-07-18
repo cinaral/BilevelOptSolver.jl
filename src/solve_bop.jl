@@ -660,11 +660,8 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
             end
         end
     end
- 
-
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
     is_sufficient = is_necessary && is_sufficient
-    Main.@infiltrate
     (; is_necessary, is_sufficient)
 end
 
