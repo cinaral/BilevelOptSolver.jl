@@ -652,7 +652,6 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
                     if all(isapprox.(w, 0; atol=tol)) || isapprox(λ[j], 0; atol=tol) || w' * ∇²ₓL * w ≤ 0.0
                         is_sufficient = false
                     end
-                    Main.@infiltrate
                 end
             end
         end
