@@ -155,7 +155,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
             if is_solved
                 is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol)
-                is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl; tol=1e2 * tol) # is_SBOPi_suf is always false
+                is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e2 * tol) # is_SBOPi_suf is always false
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
                 push!(is_necc_SBOPi, is_SBOPi_nec)
@@ -166,6 +166,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
                 if verbosity > 2
                     print("SBOP$i: Solved (nc: $is_SBOPi_nec sc: $is_SBOPi_suf. follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2])\n")
+                end
+                if verbosity > 3
+                    print("v=$v\n")
                 end
             else
                 if verbosity > 1
@@ -569,7 +572,7 @@ function check_follower_sol(v, bop; tol=1e-5)
     check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!; tol)
 end
 
-function check_SBOPi_sol(v, Λ, bop, hl, hu, zu, zl; tol=1e-5)
+function check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e-5)
     Γl = fill(0.0, bop.m)
     Γl[bop.inds.Γ["hl"]] .= hl
     Γl[bop.inds.Γ["zl"]] .= zl
@@ -661,6 +664,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
 
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
     is_sufficient = is_necessary && is_sufficient
+    Main.@infiltrate
     (; is_necessary, is_sufficient)
 end
 
