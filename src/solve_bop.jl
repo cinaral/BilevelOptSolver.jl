@@ -18,6 +18,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     v[bop.inds.v["p"]] .= param
     Λ = zeros(bop.m)
 
+    v_correspond_Js = copy(v)
 
     is_necc_fol::Vector{Bool} = []
     is_sufc_fol::Vector{Bool} = []
@@ -26,7 +27,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     i_arr::Vector{Int64} = []
     v_arr::Vector{Vector{Float64}} = []
     Λ_arr::Vector{Vector{Float64}} = []
-
+    J2_seen_arr::Vector{Dict{Int64,Set{Int64}}} = []
+    v_seen_arr::Vector{Vector{Float64}} = []
+    Λ_seen_arr::Vector{Vector{Float64}} = []
+    is_solved_seen_arr::Vector{Bool} = []
     ## restart stuff
     fol_feas_set_tol = 1e3 * copy(tol)
 
@@ -100,6 +104,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             display(v)
         end
 
+        #v[bop.inds.v["λ"]] .= 0.
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity)
         if length(follow_feas_Js) == 0
             if verbosity > 1
@@ -131,13 +136,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             break
         end
 
-        #fol_feas_set_tol = tol # reset fol_feas_set_tol
-
         if n_J > 1 && verbosity > 1
             print("Multiple feasible sets ($n_J) detected!\n")
         end
 
-        #### solve for all feasible sets
+        # solve for all feasible sets
+        v_correspond_Js .= v
+        has_v_changed = false
+
         empty!(is_necc_fol)
         empty!(is_sufc_fol)
         empty!(v_arr)
@@ -147,13 +153,36 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         for (i, J) in enumerate(follow_feas_Js)
             hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
 
-            if solver == "IPOPT"
-                is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
-            elseif solver == "PATH"
-                is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+            i_seen = findfirst(J in J2_seen_arr)
+            if !isnothing(i_seen)
+                v .= v_seen_arr[i_seen]
+                Λ .= Λ_seen_arr[i_seen]
+                is_solved = is_solved_seen_arr[i_seen]
+                if verbosity > 3
+                    print("Already attempted: ")
+                end
+            else
+                if solver == "IPOPT"
+                    is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+                elseif solver == "PATH"
+                    is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+                end
+                push!(J2_seen_arr, J)
+                push!(v_seen_arr, v)
+                push!(Λ_seen_arr, Λ)
+                push!(is_solved_seen_arr, is_solved)
             end
 
             if is_solved
+                dv = v_correspond_Js - v
+                norm_dv = LinearAlgebra.norm(dv)
+
+                if norm_dv > conv_tol
+                    if verbosity > 3
+                        print("New v=$v\n")
+                    end
+                    has_v_changed = true
+                end
                 is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol)
                 is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e2 * tol) # is_SBOPi_suf is always false
                 push!(is_necc_fol, is_fol_nec)
@@ -167,15 +196,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 if verbosity > 2
                     print("SBOP$i: Solved (nc: $is_SBOPi_nec sc: $is_SBOPi_suf. follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2])\n")
                 end
-                if verbosity > 3
-                    print("v=$v\n")
-                end
+
             else
                 if verbosity > 1
                     print("SBOP$i: FAILED J1: $(J[1]) J2: $(J[2])\n")
                 end
             end
         end
+
 
         #### check if we need to re-initialize
         # if solved none, we have to check if we have to re-initialize
@@ -315,6 +343,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 end
             end
         end
+
+        if !has_v_changed
+            status = "v_unchanged"
+            break
+        end
+
         #end
         #if verbosity > 5
         #    print("SBOPi is valid x=$x F(x): $(Fs[i]) f(x): $(fs[i])\n")
@@ -373,10 +407,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
         end
 
-        if verbosity > 5
-            print("v = ")
-            display(v)
-        end
+        #    if verbosity > 5
+        #        print("v = ")
+        #        display(v)
+        #    end
     end
 
     x = @view v[bop.inds.v["x"]]
@@ -698,6 +732,7 @@ function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3)
             push!(Kj, 2) # case 2
         elseif -tol < h[j] < tol && zl[j] + tol ≤ z[j] ≤ zu[j] - tol
             #if j > bop.n2 # should be cleaner
+            #    Main.@infiltrate
             #    push!(Kj, 1) # case 1 # IF ACTIVE, also consider inactive...
             #end
             push!(Kj, 2) # case 2
@@ -724,6 +759,26 @@ function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0)
     zl = bop.zl₀
     zu = bop.zu₀
     is_valid, K = check_mcp_sol(bop, bop.nz, h, z, zl, zu; tol)
+
+    #K = Dict{Int,Vector{Int}}()
+    #for j in 1:bop.nz
+    #    Kj = Int[]
+    #    if j <= bop.n2
+    #        push!(Kj, 2) # case 2
+    #    else
+    #        if h[j] > tol
+    #            push!(Kj, 1) # case 1
+    #            push!(Kj, 2) # case 2
+    #        else
+    #            push!(Kj, 1) # case 1
+    #        end
+    #    end
+
+    #    K[j] = Kj
+    #end
+    #is_valid = !any(isempty.(Kj for Kj in values(K)))
+
+    #Main.@infiltrate
 
     if !is_valid
         #if verbosity > 0
