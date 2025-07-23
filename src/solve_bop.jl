@@ -204,7 +204,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
         end
 
-
         #### check if we need to re-initialize
         # if solved none, we have to check if we have to re-initialize
         if length(is_necc_fol) == 0
@@ -246,6 +245,11 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
         no_sol_counter = 0
 
+        if !has_v_changed
+            # are there even any new v's to choose from?
+            status = "v_unchanged"
+            break
+        end
 
         # update v based on cost among the solutions
         Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
@@ -342,11 +346,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                     end
                 end
             end
-        end
-
-        if !has_v_changed
-            status = "v_unchanged"
-            break
         end
 
         #end
