@@ -37,7 +37,7 @@ function mb_2007_13()
     end
 
     Ff_optimal = [-1.; 0; 1]
-    xy_init = [0.5; 1.]
+    xy_init = [-0.5; 1.]
 
     (; n1, n2, F, G, f, g, xy_init, Ff_optimal)
 end

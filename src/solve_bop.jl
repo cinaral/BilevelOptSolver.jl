@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false,is_forcing_inactive_inds=false)
 
     # buffers
     v = zeros(bop.n + bop.np)
@@ -105,7 +105,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         #v[bop.inds.v["λ"]] .= 0.
-        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity)
+        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity, is_forcing_inactive_inds)
         if length(follow_feas_Js) == 0
             if verbosity > 1
                 print("Failed to compute follower feasible index sets: Not a valid solution! Maybe it's a tolerance issue?\n")
@@ -125,7 +125,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 if verbosity > 1
                     print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
                 end
-                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
+                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, is_forcing_inactive_inds)
                 tol_restart_count += 1
             end
         end
@@ -136,8 +136,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             break
         end
 
+        if verbosity > 2
+            print("x=$(v[bop.inds.v["x"]])\n")
+        end
+
         if n_J > 1 && verbosity > 1
-            print("Multiple feasible sets ($n_J) detected!\n")
+            print("Multiple feasible sets ($n_J) detected at!\n")
         end
 
         # solve for all feasible sets
@@ -698,6 +702,9 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     #Main.@infiltrate
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
     is_sufficient = is_necessary && is_sufficient
+    
+    #Main.@infiltrate
+
     (; is_necessary, is_sufficient)
 end
 
@@ -714,7 +721,7 @@ K[j] =  { j: hⱼ = 0, l < z < u} case 2  : hⱼ active (l ≠ u)
 
 Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3] and J[4]
 """
-function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3)
+function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3, is_forcing_inactive_inds=false)
     @assert(n == length(h))
     @assert(n == length(z))
     @assert(n == length(zl))
@@ -733,10 +740,13 @@ function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3)
             push!(Kj, 1) # case 1 OR  
             push!(Kj, 2) # case 2
         elseif -tol < h[j] < tol && zl[j] + tol ≤ z[j] ≤ zu[j] - tol
-            #if j > bop.n2 # should be cleaner
-            #    Main.@infiltrate
-            #    push!(Kj, 1) # case 1 # IF ACTIVE, also consider inactive...
-            #end
+            # without this, we fail to find most sols
+            if is_forcing_inactive_inds
+                if j > bop.n2 # should be cleaner
+                    #Main.@infiltrate
+                    push!(Kj, 1) # case 1 # IF ACTIVE, also consider inactive...
+                end
+            end
             push!(Kj, 2) # case 2
         elseif -tol < h[j] < tol && zu[j] - tol < z[j]
             push!(Kj, 2) # case 2 OR 
@@ -753,14 +763,14 @@ end
 
 # for the follower's problem
 # check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!)
-function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0)
+function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0, is_forcing_inactive_inds=false)
     Js = Vector{Dict{Int,Set{Int}}}()
     h = zeros(bop.nz)
     bop.h!(h, v)
     z = @view v[bop.inds.v["z"]]
     zl = bop.zl₀
     zu = bop.zu₀
-    is_valid, K = check_mcp_sol(bop, bop.nz, h, z, zl, zu; tol)
+    is_valid, K = check_mcp_sol(bop, bop.nz, h, z, zl, zu; tol, is_forcing_inactive_inds)
 
     #K = Dict{Int,Vector{Int}}()
     #for j in 1:bop.nz
