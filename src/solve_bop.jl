@@ -27,7 +27,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     i_arr::Vector{Int64} = []
     v_arr::Vector{Vector{Float64}} = []
     Λ_arr::Vector{Vector{Float64}} = []
-    J2_seen_arr::Vector{Dict{Int64,Set{Int64}}} = []
+    J2_seen_arr::Vector{Set{Int64}} = []
     v_seen_arr::Vector{Vector{Float64}} = []
     Λ_seen_arr::Vector{Vector{Float64}} = []
     is_solved_seen_arr::Vector{Bool} = []
@@ -153,7 +153,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         for (i, J) in enumerate(follow_feas_Js)
             hl, hu, zl, zu = convert_J_to_h_z_bounds(J, bop)
 
-            i_seen = findfirst(J in J2_seen_arr)
+            i_seen = findfirst(isequal(J[2]), J2_seen_arr)
             if !isnothing(i_seen)
                 v .= v_seen_arr[i_seen]
                 Λ .= Λ_seen_arr[i_seen]
@@ -167,9 +167,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 elseif solver == "PATH"
                     is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol, max_iter)
                 end
-                push!(J2_seen_arr, J)
-                push!(v_seen_arr, v)
-                push!(Λ_seen_arr, Λ)
+                push!(J2_seen_arr, copy(J[2]))
+                push!(v_seen_arr, copy(v))
+                push!(Λ_seen_arr, copy(Λ))
                 push!(is_solved_seen_arr, is_solved)
             end
 
@@ -178,9 +178,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 norm_dv = LinearAlgebra.norm(dv)
 
                 if norm_dv > conv_tol
-                    if verbosity > 3
-                        print("New v=$v\n")
-                    end
+                    #if verbosity > 3
+                    #    print("New v=$v\n")
+                    #end
                     has_v_changed = true
                 end
                 is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol)
@@ -194,7 +194,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 push!(i_arr, i)
 
                 if verbosity > 2
-                    print("SBOP$i: Solved (nc: $is_SBOPi_nec sc: $is_SBOPi_suf. follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2])\n")
+                    print("SBOP$i: Solved (nc: $is_SBOPi_nec sc: $is_SBOPi_suf. follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2]) x=$(v[bop.inds.v["x"]])\n")
                 end
 
             else
@@ -245,16 +245,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
         no_sol_counter = 0
 
-        if !has_v_changed
-            # are there even any new v's to choose from?
-            status = "v_unchanged"
-            break
-        end
-
         # update v based on cost among the solutions
         Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
         fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
-        F_ = Inf
+        F_ = -Inf
         chosen_i = 0
         for (i, is_fol_nec) in enumerate(is_necc_fol)
             if !is_fol_nec
@@ -268,7 +262,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             if verbosity > 4
                 print("Considering SBOP$(i_arr[i]): F(x): $(Fs[i]) f(x): $(fs[i])...\n")
             end
-            if Fs[i] < F_  # choose the smallest available F value
+            if Fs[i] > F_  # choose the largest available F value
                 chosen_i = i_arr[i]
                 F_ = Fs[i]
                 v .= v_arr[i]
@@ -410,6 +404,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         #        print("v = ")
         #        display(v)
         #    end
+
+        if !has_v_changed
+            # are there even any new v's to choose from?
+            status = "v_unchanged"
+            break
+        end
     end
 
     x = @view v[bop.inds.v["x"]]
@@ -612,11 +612,13 @@ function check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e-5)
     Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zu"]] .= -zu
 
-    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol)
+    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol, n_actual=bop.n1+bop.n2)
 end
 
-
-function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-5)
+"""
+n_actual refers to part of v that corresponds to x1 and x2, and without the λ part which always violates SC 
+"""
+function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-5, n_actual=n)
     #@assert(n == length(x))
     @assert(m == length(λ))
     @assert(m == length(gl))
@@ -643,7 +645,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     is_sufficient = false
 
     # TODO: 2025-07-18: not sure if I should use tol in PSD equalities here
-    if isposdef(∇²ₓL) # PD shortcut
+    if isposdef(∇²ₓL[1:n_actual, 1:n_actual]) # PD shortcut
         is_necessary_2nd_ord = true
 
         if isempty(active_js) # unconstrained problem
@@ -655,7 +657,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         end
     else
         if isempty(active_js) # unconstrained problem
-            if eigmin(Matrix(∇²ₓL)) ≥ 0.0  # not sure about tol here
+            if eigmin(Matrix(∇²ₓL[1:n_actual, 1:n_actual])) ≥ 0.0  # not sure about tol here
                 is_necessary_2nd_ord = true
                 is_sufficient = false
             end
@@ -666,33 +668,34 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
             is_sufficient = true
 
             for j in active_js
-                for k in 1:n
+                for k in 1:n_actual
                     # we build a set of incomplete tangent w with a simple heuristic
                     # e.g. ∇ₓg[j, :] = [0; 3; 6], we check w = [1; 0; 0], [1; -2; 1], [1; 1; -.5]
                     if isapprox(∇ₓg[j, k], 0; atol=tol)
-                        w = zeros(n)
+                        w = zeros(n_actual)
                         w[k] = 1.0
                     else
-                        w = ones(n)
+                        w = ones(n_actual)
                         w[k] = 0.0
-                        offset = w' * ∇ₓg[j, :]
+                        offset = w' * ∇ₓg[j, 1:n_actual]
                         w[k] = -offset / ∇ₓg[j, k]
                     end
                     # sanity checks, there might be a smarter way to get the tangent cone 
-                    @assert(isapprox(w' * ∇ₓg[j, :], 0; atol=tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
+                    @assert(isapprox(w' * ∇ₓg[j, 1:n_actual], 0; atol=tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
 
-                    if w' * ∇²ₓL * w < 0.0 # w' * ∇²ₓL * w ≥ 0
+                    if w' * ∇²ₓL[1:n_actual, 1:n_actual] * w < 0.0 # w' * ∇²ₓL * w ≥ 0
                         is_necessary_2nd_ord = false
                     end
 
                     # w ≠ 0 && λ ≠ 0 && w' * ∇²ₓL * w > 0 
-                    if all(isapprox.(w, 0; atol=tol)) || isapprox(λ[j], 0; atol=tol) || w' * ∇²ₓL * w ≤ 0.0
+                    if all(isapprox.(w, 0; atol=tol)) || isapprox(λ[j], 0; atol=tol) || w' * ∇²ₓL[1:n_actual, 1:n_actual] * w ≤ 0.0
                         is_sufficient = false
                     end
                 end
             end
         end
     end
+    #Main.@infiltrate
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
     is_sufficient = is_necessary && is_sufficient
     (; is_necessary, is_sufficient)

@@ -35,8 +35,8 @@ function DempeDutta2012Ex34()
         ]
     end
     Ff_optimal = [0.5; -0.5; 1]
-    xy_init = [-0.1; 1]
-	#xy_init = [0.1; 1]
+    #xy_init = [-0.1; 1]
+	xy_init = [0.1; 1]
 
     (; n1, n2, F, G, f, g, xy_init, Ff_optimal)
 end
@@ -47,7 +47,7 @@ x_optimal = [0.5; 0.5]
 bop, syms = construct_bop(b.n1, b.n1, b.F, b.G, b.f, b.g; verbosity=0, np=0)
 
 elapsed_time = @elapsed begin
-    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init=b.xy_init, verbosity=5, tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false, is_checking_x_agree=false, init_solver="IPOPT", solver="IPOPT")
+    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init=b.xy_init, verbosity=5, tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=false, is_checking_x_agree=false, init_solver="PATH", solver="PATH")
 end
 
 Ff = [bop.F(x); bop.f(x)]
@@ -56,4 +56,4 @@ if is_sol_valid
 else
     print("FAIL ")
 end
-print("($status), $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(b.Ff_optimal, sigdigits=5)))\n");
+print("($status), $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(b.Ff_optimal[1:2], sigdigits=5)))\n");
