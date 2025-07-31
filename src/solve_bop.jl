@@ -10,7 +10,14 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false,is_forcing_inactive_inds=false)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=false)
+
+    if is_forcing_inactive_inds && is_require_all_solved
+        if verbosity > 0
+            print("is_forcing_inactive_inds and is_require_all_solved cannot be on at the same time, setting is_require_all_solved=false!\n")
+        end
+        is_require_all_solved = false
+    end
 
     # buffers
     v = zeros(bop.n + bop.np)
@@ -278,60 +285,40 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             print("Chose SBOP$chosen_i x=$(v[bop.inds.v["x"]])\n")
         end
 
-        #if !is_sol_valid
-        #n_Js = map(v -> length(compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)), v_arr)
-        #Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
-        #fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
-        #@info "$Fs $fs"
-        #Gs = mapreduce(v -> bop.G(v[bop.inds.v["x"]])', vcat, v_arr)
-        #gs = mapreduce(v -> bop.g(v[bop.inds.v["x"]])', vcat, v_arr)
-        #max_n_J = maximum(n_Js)
-        #fs_sorted_inds = sortperm(fs)
-        #F = Inf
-        #for (i, vv) in enumerate(v_arr)
-        #    if !is_necc_fol[i] # ignore non-solutions
-        #        continue
-        #    end
-        #    if is_checking_min && any(is_sufc_fol) # if checking min, skip non sufficient solutions
-        #        if !is_sufc_fol[i]
-        #            continue
-        #        end
-        #    end
-        #    F_ = bop.F(vv[bop.inds.v["x"]])   # choose the smallest available F value
-        #    if F_ < F
-        #        F = F_
-        #        v .= v_arr[i]
-        #        Λ .= Λ_arr[i]
-        #    end
-        #end
-        #continue
-        #end
-
-        #Main.@infiltrate
-        # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
-        #is_all_solved = length(v_arr) == n_J
-
-        #if is_all_solved
-        #if verbosity > 0
-        #    print("All SBOPi ($n_J) solved.\n")
-        #end
-
-        #Main.@infiltrate
-
-        # out of all solved solutions...
         #all(is_necc_SBOPi) # this will usually be false
-        if all(is_necc_fol)
-            if !is_checking_min # ignore sufc
-                is_sol_valid = true
-            elseif all(is_sufc_fol)
-                is_sol_valid = true
-            else
-                is_sol_valid = false
+        is_sol_valid = false
+        is_all_solved = length(v_arr) == n_J
+        if is_all_solved
+            if verbosity > 0
+                print("All SBOPi ($n_J) solved.\n")
+            end
+        end
+
+        # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
+        if is_require_all_solved
+            if is_all_solved
+                if is_checking_min
+                    if all(is_sufc_fol)
+                        is_sol_valid = true
+                    end
+                else # ignore sufc
+                    is_sol_valid = true
+                end
+            end
+        else # out of all solved solutions...
+            if is_checking_min
+                if all(is_sufc_fol)
+                    is_sol_valid = true
+                end
+            else # ignore sufc
+                if all(is_necc_fol)
+                    is_sol_valid = true
+                end
             end
         end
 
         # optional check
-        if is_checking_x_agree && is_sol_valid
+        if is_checking_x_agree && is_sol_valid && length(v_arr) > 0
             for (i, vv) in enumerate(v_arr)
                 if i < n_J
                     norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
@@ -345,11 +332,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 end
             end
         end
-
-        #end
-        #if verbosity > 5
-        #    print("SBOPi is valid x=$x F(x): $(Fs[i]) f(x): $(fs[i])\n")
-        #end
 
         # we check if the solution has converged even if the solution is not valid
         if !is_prev_v_set
@@ -403,11 +385,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 norm_dv_cur_idx = 1
             end
         end
-
-        #    if verbosity > 5
-        #        print("v = ")
-        #        display(v)
-        #    end
 
         if !has_v_changed
             # are there even any new v's to choose from?
@@ -616,7 +593,7 @@ function check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e-5)
     Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zu"]] .= -zu
 
-    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol, n_actual=bop.n1+bop.n2)
+    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol, n_actual=bop.n1 + bop.n2)
 end
 
 """
@@ -702,7 +679,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     #Main.@infiltrate
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
     is_sufficient = is_necessary && is_sufficient
-    
+
     #Main.@infiltrate
 
     (; is_necessary, is_sufficient)

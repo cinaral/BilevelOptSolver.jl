@@ -35,8 +35,8 @@ function DempeDutta2012Ex34()
         ]
     end
     Ff_optimal = [0.5; -0.5; 1]
-    #xy_init = [-0.1; 1]
-	xy_init = [0.1; 1]
+    xy_init = [-0.1; 1]
+	#xy_init = [0.1; 1]
 
     (; n1, n2, F, G, f, g, xy_init, Ff_optimal)
 end
