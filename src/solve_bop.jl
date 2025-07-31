@@ -248,7 +248,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         # update v based on cost among the solutions
         Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
         fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
-        F_ = -Inf
+        F_ = Inf
         chosen_i = 0
         for (i, is_fol_nec) in enumerate(is_necc_fol)
             if !is_fol_nec
@@ -262,7 +262,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             if verbosity > 4
                 print("Considering SBOP$(i_arr[i]): F(x): $(Fs[i]) f(x): $(fs[i])...\n")
             end
-            if Fs[i] > F_  # choose the largest available F value
+            if Fs[i] < F_  # choose the smallest available F value
                 chosen_i = i_arr[i]
                 F_ = Fs[i]
                 v .= v_arr[i]
