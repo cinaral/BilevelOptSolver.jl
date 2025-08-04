@@ -44,9 +44,9 @@ bop, _ = construct_bop(n₁, n₂, F, G, f, g);
 
 is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, solver="PATH", is_checking_min=true, verbosity=5)
 
-Ff = [bop.F(x); bop.f(x)]
 Ff_optimal = [bop.F(x_optimal); bop.f(x_optimal)]
-if success
+Ff = [bop.F(x); bop.f(x)]
+if is_sol_valid
     print("success ")
 else
     print("FAIL ")

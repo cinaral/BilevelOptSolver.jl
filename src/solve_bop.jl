@@ -593,13 +593,13 @@ function check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e-5)
     Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zu"]] .= -zu
 
-    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol, n_actual=bop.n1 + bop.n2)
+    check_nlp_sol(v, Λ, bop.n, bop.m, Γl, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_size, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_size, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!; tol)
 end
 
 """
 n_actual refers to part of v that corresponds to x1 and x2, and without the λ part which always violates SC 
 """
-function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-5, n_actual=n)
+function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-5)
     #@assert(n == length(x))
     @assert(m == length(λ))
     @assert(m == length(gl))
@@ -621,63 +621,44 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     #is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
 
 
-    active_js = findall(isapprox.(g, 0; atol=tol)) # active indices
-    is_necessary_2nd_ord = false
-    is_sufficient = false
 
-    # TODO: 2025-07-18: not sure if I should use tol in PSD equalities here
-    if isposdef(∇²ₓL[1:n_actual, 1:n_actual]) # PD shortcut
-        is_necessary_2nd_ord = true
-
-        if isempty(active_js) # unconstrained problem
-            is_sufficient = true
-        else
-            if all([λ[j] ≥ tol for j in active_js]) # all active multipliers must be strictly positive
-                is_sufficient = true
-            end
-        end
-    else
-        if isempty(active_js) # unconstrained problem
-            if eigmin(Matrix(∇²ₓL[1:n_actual, 1:n_actual])) ≥ 0.0  # not sure about tol here
-                is_necessary_2nd_ord = true
-                is_sufficient = false
-            end
-        else
-            # now we need to consider all w s.t. ∇ₓgⱼ' w = 0 for all active j, but it's tricky
-            # like w = Vector(∇ₓg[j, :])' \ 0 would always return 0 so need something else to check
-            is_necessary_2nd_ord = true
-            is_sufficient = true
-
-            for j in active_js
-                for k in 1:n_actual
-                    # we build a set of incomplete tangent w with a simple heuristic
-                    # e.g. ∇ₓg[j, :] = [0; 3; 6], we check w = [1; 0; 0], [1; -2; 1], [1; 1; -.5]
-                    if isapprox(∇ₓg[j, k], 0; atol=tol)
-                        w = zeros(n_actual)
-                        w[k] = 1.0
-                    else
-                        w = ones(n_actual)
-                        w[k] = 0.0
-                        offset = w' * ∇ₓg[j, 1:n_actual]
-                        w[k] = -offset / ∇ₓg[j, k]
-                    end
-                    # sanity checks, there might be a smarter way to get the tangent cone 
-                    @assert(isapprox(w' * ∇ₓg[j, 1:n_actual], 0; atol=tol)) # w' * ∇ₓgⱼ = 0 for j∈Jᵢ⁺
-
-                    if w' * ∇²ₓL[1:n_actual, 1:n_actual] * w < 0.0 # w' * ∇²ₓL * w ≥ 0
-                        is_necessary_2nd_ord = false
-                    end
-
-                    # w ≠ 0 && λ ≠ 0 && w' * ∇²ₓL * w > 0 
-                    if all(isapprox.(w, 0; atol=tol)) || isapprox(λ[j], 0; atol=tol) || w' * ∇²ₓL[1:n_actual, 1:n_actual] * w ≤ 0.0
-                        is_sufficient = false
-                    end
-                end
-            end
+    # strongly active constraints
+    active_js = []
+    for i in 1:m
+        if isapprox(g[i], 0; atol=tol) && λ[i] ≥ tol
+            push!(active_js, i)
         end
     end
+
+    min_eig = -Inf
+
+    if isempty(active_js) # unconstrained problem
+        if n > 1
+            min_eig = eigmin(∇²ₓL)
+        else
+            min_eig = ∇²ₓL[1]
+        end
+    else
+        C = Matrix(∇ₓg[active_js, :])
+        _, _, V = svd(C; full=true)
+
+        r = rank(C)
+        # 2025-08-04 TODO: what about when nullspace is empty?
+        if n - r > 0 
+            Z = V[:, n-r+1:n]
+            min_eig = eigmin(Z' * ∇²ₓL * Z)
+        end
+    end
+
+    is_sufficient = false
+    if min_eig ≥ tol
+        is_sufficient = true # strict minimum
+    elseif isapprox(min_eig, 0; atol=tol)
+        is_sufficient = true # not strict minimum
+    end
+
     #Main.@infiltrate
-    is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas && is_necessary_2nd_ord
+    is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
     is_sufficient = is_necessary && is_sufficient
 
     #Main.@infiltrate
