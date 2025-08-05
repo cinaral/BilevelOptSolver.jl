@@ -4,7 +4,7 @@ using Statistics
 using CSV
 include("../src/BOLIB_utils.jl")
 
-res = run_all_BOLIB_examples(; verbosity=0, max_iter=50, tol=1e-7, is_checking_min=false, conv_dv_len=1, is_checking_x_agree=true, is_always_hp=false, is_forcing_inactive_inds=false, init_solver="IPOPT", solver="IPOPT");
+res = run_all_BOLIB_examples(; verbosity=0, max_iter=50, tol=1e-7, is_checking_min=true, conv_dv_len=1, is_checking_x_agree=false, is_always_hp=false, is_forcing_inactive_inds=false, init_solver="IPOPT", solver="IPOPT");
 CSV.write("BOLIB_results.csv", res.df)
 
 #res_min = run_all_BOLIB_examples(; verbosity=0, max_iter=50, tol=1e-7, is_checking_min=true, conv_dv_len=1, is_always_hp=false, init_solver="PATH", solver="PATH");

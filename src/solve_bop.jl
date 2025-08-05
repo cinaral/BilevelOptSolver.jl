@@ -29,8 +29,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
     is_necc_fol::Vector{Bool} = []
     is_sufc_fol::Vector{Bool} = []
-    is_necc_SBOPi::Vector{Bool} = []
-    is_sufc_SBOPi::Vector{Bool} = []
+    #is_necc_SBOPi::Vector{Bool} = []
+    #is_sufc_SBOPi::Vector{Bool} = []
     i_arr::Vector{Int64} = []
     v_arr::Vector{Vector{Float64}} = []
     Λ_arr::Vector{Vector{Float64}} = []
@@ -195,17 +195,17 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                     has_v_changed = true
                 end
                 is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol)
-                is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e2 * tol) # is_SBOPi_suf is always false
+                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e2 * tol) # is_SBOPi_suf is always false
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
-                push!(is_necc_SBOPi, is_SBOPi_nec)
-                push!(is_sufc_SBOPi, is_SBOPi_suf)
+                #push!(is_necc_SBOPi, is_SBOPi_nec)
+                #push!(is_sufc_SBOPi, is_SBOPi_suf)
                 push!(v_arr, copy(v))
                 push!(Λ_arr, copy(Λ))
                 push!(i_arr, i)
 
                 if verbosity > 2
-                    print("SBOP$i: Solved (nc: $is_SBOPi_nec sc: $is_SBOPi_suf. follower nc: $is_fol_nec sc: $is_fol_suf) J1: $(J[1]) J2: $(J[2]) x=$(v[bop.inds.v["x"]])\n")
+                    print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2: $(J[2]) x=$(v[bop.inds.v["x"]])\n")
                 end
 
             else
@@ -318,7 +318,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         # optional check
-        if is_checking_x_agree && is_sol_valid && length(v_arr) > 0
+        if is_checking_x_agree && is_sol_valid && length(v_arr) > 1
             for (i, vv) in enumerate(v_arr)
                 if i < n_J
                     norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
@@ -634,7 +634,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
 
     if isempty(active_js) # unconstrained problem
         if n > 1
-            min_eig = eigmin(∇²ₓL)
+            min_eig = eigmin(Matrix(∇²ₓL))
         else
             min_eig = ∇²ₓL[1]
         end
@@ -644,7 +644,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
 
         r = rank(C)
         # 2025-08-04 TODO: what about when nullspace is empty?
-        if n - r > 0 
+        if n - r > 0
             Z = V[:, n-r+1:n]
             min_eig = eigmin(Z' * ∇²ₓL * Z)
         end
