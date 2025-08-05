@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=false)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true)
 
     if is_forcing_inactive_inds && is_require_all_solved
         if verbosity > 0
@@ -106,10 +106,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
         #### compute feasible sets
         # by this point, v must at least satisfy the follower's problem
-        if verbosity > 5
-            print("Computing feasible sets for the follower at v: ")
-            display(v)
-        end
+        #if verbosity > 5
+        #    print("Computing feasible sets for the follower at v: ")
+        #    display(v)
+        #end
 
         #v[bop.inds.v["λ"]] .= 0.
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity, is_forcing_inactive_inds)
@@ -144,7 +144,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         if verbosity > 2
-            print("x=$(v[bop.inds.v["x"]])\n")
+            print("x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
         end
 
         if n_J > 1 && verbosity > 1
@@ -205,12 +205,16 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 push!(i_arr, i)
 
                 if verbosity > 2
+<<<<<<< HEAD
                     print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2: $(J[2]) x=$(v[bop.inds.v["x"]])\n")
+=======
+                    print("SBOP$i: Solved (nc: $is_SBOPi_nec sc: $is_SBOPi_suf. follower nc: $is_fol_nec sc: $is_fol_suf) J2: $(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
+>>>>>>> refs/remotes/origin/master
                 end
 
             else
                 if verbosity > 1
-                    print("SBOP$i: FAILED J1: $(J[1]) J2: $(J[2])\n")
+                    print("SBOP$i: FAILED J2: $(J[2])\n")
                 end
             end
         end
@@ -271,7 +275,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 end
             end
             if verbosity > 4
-                print("Considering SBOP$(i_arr[i]): F(x): $(Fs[i]) f(x): $(fs[i])...\n")
+                print("Considering SBOP$(i_arr[i]): F(x): $(round.(Fs[i],sigdigits=2)) f(x): $(round.(fs[i],sigdigits=2))...\n")
             end
             if Fs[i] < F_  # choose the smallest available F value
                 chosen_i = i_arr[i]
@@ -282,7 +286,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         if verbosity > 1
-            print("Chose SBOP$chosen_i x=$(v[bop.inds.v["x"]])\n")
+            print("Chose SBOP$chosen_i x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
         end
 
         #all(is_necc_SBOPi) # this will usually be false
