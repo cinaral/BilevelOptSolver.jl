@@ -39,7 +39,7 @@ function mb_2007_03()
         ]
     end
 
-    xy_init = [-0.1]
+    xy_init = [0.1]
     xy_optimal = [-1.0]
     Ff_optimal = [-1.0; 1.0]
     name = "mb_2007_03"
