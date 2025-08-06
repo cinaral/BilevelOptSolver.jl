@@ -205,7 +205,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 push!(i_arr, i)
 
                 if verbosity > 2
-                    print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2: $(J[2]) x=$(v[bop.inds.v["x"]])\n")
+                    print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2=$(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
                 end
 
             else
@@ -620,8 +620,6 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
     #is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
 
-
-
     # strongly active constraints
     active_js = []
     for i in 1:m
@@ -647,6 +645,8 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         if n - r > 0
             Z = V[:, n-r+1:n]
             min_eig = eigmin(Z' * ∇²ₓL * Z)
+        elseif n - r == 0 # trivial case
+            min_eig = 0.
         end
     end
 
@@ -657,11 +657,8 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         is_sufficient = true # not strict minimum
     end
 
-    #Main.@infiltrate
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
     is_sufficient = is_necessary && is_sufficient
-
-    #Main.@infiltrate
 
     (; is_necessary, is_sufficient)
 end
