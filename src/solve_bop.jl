@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true, rng=MersenneTwister(123), max_random_restart_count=10)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-4, conv_dv_len=3, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true, rng=MersenneTwister(123), max_random_restart_count=10, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
 
     if is_forcing_inactive_inds && is_require_all_solved
         if verbosity > 0
@@ -19,18 +19,17 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         is_require_all_solved = false
     end
 
+    @assert length(x_init) >= bop.nx "Wrong x_init length!"
+
     # buffers
     v = zeros(bop.n + bop.np)
     v[bop.inds.v["x"]] .= x_init[1:bop.nx]
     v[bop.inds.v["p"]] .= param
     Λ = zeros(bop.m)
-
     v_correspond_Js = copy(v)
 
     is_necc_fol::Vector{Bool} = []
     is_sufc_fol::Vector{Bool} = []
-    #is_necc_SBOPi::Vector{Bool} = []
-    #is_sufc_SBOPi::Vector{Bool} = []
     i_arr::Vector{Int64} = []
     v_arr::Vector{Vector{Float64}} = []
     Λ_arr::Vector{Vector{Float64}} = []
@@ -38,17 +37,13 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     v_seen_arr::Vector{Vector{Float64}} = []
     Λ_seen_arr::Vector{Vector{Float64}} = []
     is_solved_seen_arr::Vector{Bool} = []
-    ## restart stuff
-    fol_feas_set_tol = 1e3 * copy(tol)
 
     # convergence stuff 
     is_sol_valid = false
     is_prev_v_set = false
     is_norm_dv_full = false
-    no_sol_counter = 0
     init_counter = 0
-    norm_dv_arr = zeros(norm_dv_len)
-    chron_norm_dv_arr = copy(norm_dv_arr)
+    norm_dv_arr = zeros(conv_dv_len)
     norm_dv_cur_idx = 1
     prev_iter_v = zeros(bop.n)
 
@@ -59,12 +54,16 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         solve_SBOPi_PATH! = setup_solve_SBOPi_PATH(bop)
     end
 
-    iter_count = 0
+    # restart stuff
+    fol_feas_set_tol = 1e3 * copy(tol)
     is_done = false
     is_converged = false
     is_initialized = false
+    is_random_restart = false
     random_restart_count = 0
     status = "uninitialized"
+
+    iter_count = 0
 
     while !is_done
         if iter_count >= max_iter
@@ -79,21 +78,36 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             print("--Iteration $iter_count\n")
         end
 
-        #### initialize
-        if !is_initialized
-            init_counter += 1
-            if init_counter > max_inits
-                status = "max_init"
+        if is_random_restart
+            if random_restart_count < max_random_restart_count
+                is_random_restart = false
+                random_restart_count += 1
                 if verbosity > 0
-                    print("Max initializations ($init_counter) reached!\n")
+                    print("Restarting with random init (attempt $random_restart_count)\n")
                 end
+                v[bop.inds.v["x"]] .= x_init_min .+ rand(rng, bop.nx, 1) .* (x_init_max - x_init_min)
+                is_converged = false
+                is_initialized = false
+                is_prev_v_set = false
+                norm_dv_arr .= 0.0
+                norm_dv_cur_idx = 1
+                status = "uninitialized"
+                prev_iter_v = zeros(bop.n)
+            else
+                if verbosity > 0
+                    print("Reached maximum number of random restarts! Terminating\n")
+                end
+                status = "max_random_restarts"
+                is_done = true
                 break
             end
+        end
 
+        #### initialize
+        if !is_initialized
             is_initialized = initialize_z!(v, bop; verbosity, init_solver, tol, is_always_hp)
 
-            norm_dv_arr = zeros(norm_dv_len)
-            chron_norm_dv_arr = copy(norm_dv_arr)
+            norm_dv_arr = zeros(conv_dv_len)
             norm_dv_cur_idx = 1
             prev_iter_v = zeros(bop.n)
 
@@ -106,14 +120,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
         end
 
-        #### compute feasible sets
+        # compute feasible sets
         # by this point, v must at least satisfy the follower's problem
-        #if verbosity > 5
-        #    print("Computing feasible sets for the follower at v: ")
-        #    display(v)
-        #end
-
-        #v[bop.inds.v["λ"]] .= 0.
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity, is_forcing_inactive_inds)
         if length(follow_feas_Js) == 0
             if verbosity > 1
@@ -191,17 +199,11 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 norm_dv = LinearAlgebra.norm(dv)
 
                 if norm_dv > conv_tol
-                    #if verbosity > 3
-                    #    print("New v=$v\n")
-                    #end
                     has_v_changed = true
                 end
                 is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol)
-                #is_SBOPi_nec, is_SBOPi_suf = check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e2 * tol) # is_SBOPi_suf is always false
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
-                #push!(is_necc_SBOPi, is_SBOPi_nec)
-                #push!(is_sufc_SBOPi, is_SBOPi_suf)
                 push!(v_arr, copy(v))
                 push!(Λ_arr, copy(Λ))
                 push!(i_arr, i)
@@ -217,65 +219,16 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
         end
 
-        #### check if we need to re-initialize
-        # if solved none, we have to check if we have to re-initialize
-        if length(is_necc_fol) == 0
+        ## check if we need to re-initialize
+        # if solved none or if none of the follower's are actually solved, we have to re-initialize
+        if length(is_necc_fol) == 0 || !any(is_necc_fol)
             is_sol_valid = false
-            no_sol_counter += 1
             if verbosity > 1
-                print("Failed to solve any SBOPi!\n")
+                print("Failed to solve any SBOPi or no valid follower solutions!\n")
             end
-            #if no_sol_counter > max_no_sols
-            #    status = "max_no_sols"
-            #    break
-            #end
-            # copy pasted, should be made cleaner
-            if random_restart_count < max_random_restart_count
-                random_restart_count += 1
-                if verbosity > 0
-                    print("No solutions, restarting with random init (attempt $random_restart_count)\n")
-                end
-                v[bop.inds.v["x"]] .= randn(rng, bop.nx, 1)
-                is_converged = false
-                init_counter = 0
-                is_initialized = false
-                prev_iter_v = zeros(bop.n)
-                continue
-            else
-                if verbosity > 0
-                    print("Reached maximum number of random restarts! Terminating\n")
-                end
-                status = "max_random_restarts"
-                is_done = true
-                break
-            end
-            #is_necessary, _ = check_follower_sol(v, bop; tol=1e2 * tol)
-            #if !is_necessary
-            #    is_initialized = false
-            #    if verbosity > 0
-            #        print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
-            #    end
-            #    is_prev_v_set = false
-            #    norm_dv_arr .= 0.0
-            #    norm_dv_cur_idx = 1
-            #    status = "uninitialized"
-            #end
-            #continue
-        end
-
-        # if none of the follower's are actually solved, we still need to reinitialize
-        if !any(is_necc_fol)
-            is_initialized = false
-            if verbosity > 0
-                print("Iteration $iter_count: No valid follower solution, we must initialize again!\n")
-            end
-            is_prev_v_set = false
-            norm_dv_arr .= 0.0
-            norm_dv_cur_idx = 1
-            status = "uninitialized"
+            is_random_restart = true
             continue
         end
-        no_sol_counter = 0
 
         # update v based on cost among the solutions
         Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
@@ -286,7 +239,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             if !is_fol_nec
                 continue
             end
-            if is_checking_min && any(is_sufc_fol) # if checking min, skip non-sufficient solutions unless there's none
+            if any(is_sufc_fol) # if checking min, skip non-sufficient solutions unless there's none
                 if !is_sufc_fol[i]
                     continue
                 end
@@ -316,43 +269,41 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         # if we solved all, there's a good chance we found a solution. now we can check optimality conditions
-        if is_require_all_solved
-            if is_all_solved
-                if is_checking_min
-                    if all(is_sufc_fol)
-                        is_sol_valid = true
+        if is_checking_x_agree
+            is_sol_valid = true
+            for (i, vv) in enumerate(v_arr)
+                norm_x_err = LinearAlgebra.norm(vv[bop.inds.v["x"]] - v_correspond_Js[bop.inds.v["x"]]) # only checking x error
+                if (norm_x_err ≤ x_agree_tol)
+                    if !is_sufc_fol[i]
+                        is_sol_valid = false
                     end
-                else # ignore sufc
-                    is_sol_valid = true
                 end
             end
-        else # out of all solved solutions...
-            if is_checking_min
-                if all(is_sufc_fol)
-                    is_sol_valid = true
-                end
-            else # ignore sufc
-                if all(is_necc_fol)
-                    is_sol_valid = true
-                end
+        else  # out of all solved solutions...
+            if all(is_sufc_fol)
+                is_sol_valid = true
             end
         end
 
-        # optional check
-        if is_checking_x_agree && is_sol_valid && length(v_arr) > 1
-            for (i, vv) in enumerate(v_arr)
-                if i < n_J
-                    norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
-                    if (norm_x_err > x_agree_tol)
-                        if verbosity > 1
-                            print("SBOPi solutions disagree! norm x err: $norm_x_err\n")
-                        end
-                        is_sol_valid = false
-                        break
-                    end
-                end
-            end
+        if is_require_all_solved && !is_all_solved
+            is_sol_valid = false
         end
+
+        ## optional check
+        #if is_checking_x_agree && is_sol_valid && length(v_arr) > 1
+        #    for (i, vv) in enumerate(v_arr)
+        #        if i < n_J
+        #            norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
+        #            if (norm_x_err > x_agree_tol)
+        #                if verbosity > 1
+        #                    print("SBOPi solutions disagree! norm x err: $norm_x_err\n")
+        #                end
+        #                is_sol_valid = false
+        #                break
+        #            end
+        #        end
+        #    end
+        #end
 
         # we check if the solution has converged even if the solution is not valid
         if !is_prev_v_set
@@ -365,36 +316,17 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             norm_dv = LinearAlgebra.norm(dv)
             norm_dv_arr[norm_dv_cur_idx] = norm_dv
 
-            if !is_norm_dv_full && norm_dv_cur_idx == norm_dv_len
+            if !is_norm_dv_full && norm_dv_cur_idx == conv_dv_len
                 is_norm_dv_full = true
             end
 
-            # in chronological order
-            if !is_norm_dv_full
-                chron_norm_dv_arr[end-norm_dv_cur_idx+1:end] .= norm_dv_arr[1:norm_dv_cur_idx]
-            else
-                if norm_dv_cur_idx < norm_dv_len
-                    chron_norm_dv_arr .= [norm_dv_arr[norm_dv_cur_idx+1:end]; norm_dv_arr[1:norm_dv_cur_idx]]
-                else
-                    chron_norm_dv_arr .= norm_dv_arr
-                end
-            end
-
-            # we check convergence by tracking norm_dv_len dv's, if all is less than conv tol we're done 
-            if (is_norm_dv_full || norm_dv_cur_idx ≥ conv_dv_len) && all(chron_norm_dv_arr[end-conv_dv_len+1:end] .< conv_tol)
+            # we check convergence by tracking conv_dv_len dv's, if all is less than conv tol we're done 
+            if (is_norm_dv_full || norm_dv_cur_idx ≥ conv_dv_len) && all(norm_dv_arr .< conv_tol)
                 if verbosity > 3
                     print("Converged in $iter_count iterations! (Last $conv_dv_len norm(dv) is less than conv tol $conv_tol)\n")
                 end
                 is_converged = true
                 status = "converged"
-                #break
-            elseif is_norm_dv_full && all(diff(chron_norm_dv_arr) .≤ -tol)
-                # also it's worth checking if dv is slowly
-                if verbosity > 3
-                    print("last $norm_dv_len norm(dv) is monotonously decreasing without meeting conv tol, terminating\n")
-                end
-                status = "monoton_decreasing"
-                #break
             end
 
             if verbosity > 1
@@ -402,7 +334,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             end
 
             norm_dv_cur_idx += 1
-            if norm_dv_cur_idx > norm_dv_len
+            if norm_dv_cur_idx > conv_dv_len
                 norm_dv_cur_idx = 1
             end
         end
@@ -417,31 +349,17 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         if is_converged && is_sol_valid
             is_done = true
         elseif is_converged && !is_sol_valid
-            if random_restart_count < max_random_restart_count
-                random_restart_count += 1
-                if verbosity > 0
-                    print("Converged but solution is invalid, restarting with random init (attempt $random_restart_count)\n")
-                end
-                v[bop.inds.v["x"]] .= randn(rng, bop.nx, 1)
-                is_converged = false
-                init_counter = 0
-                is_initialized = false
-                prev_iter_v = zeros(bop.n)
-            else
-                if verbosity > 0
-                    print("Reached maximum number of random restarts! Terminating\n")
-                end
-                status = "max_random_restarts"
-                is_done = true
+            if verbosity > 1
+                print("Converged but invalid solution!\n")
             end
+            is_random_restart = true
         end
     end
 
     x = @view v[bop.inds.v["x"]]
     λ = @view v[bop.inds.v["λ"]]
-    # final sanity check
-    #is_fol_necessary, is_fol_sufficient = check_follower_sol(v, bop; tol)
 
+    # final sanity check
     if is_sol_valid
         if !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
             if verbosity > 0

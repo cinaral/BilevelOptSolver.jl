@@ -35,7 +35,7 @@ FrankeEtal2018Ex513 (L-O-L-N)
 and maybe SinhaMaloDeb2014TP7 (N-N-N-L), TollSettingP2 (N-L-N-L), TollSettingP3 (N-L-N-L)
 """
 # interesting ones: AiyoshiShimizu1984Ex2, PaulaviciusAdjiman2017b, Yezza1996Ex41, Mirrlees1999, Outrata1990Ex2e, KleniatiAdjiman2014Ex3
-b = BOLIB.KleniatiAdjiman2014Ex4() 
+b = BOLIB.CandlerTownsley1982()
 
 bop, syms = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g; verbosity=0, np=0)
 
@@ -43,12 +43,12 @@ x_init = b.xy_init
 #x_init = [2.0; -.5]; # gets [1.97; -0.98]
 #x_init = [2.0; .5]; # gets [2.1702, 0.4138] 
 #x_init = [1.0; 1.]; # gets [1.9912, 0.89471]
-x_init = [1; 0.957]; # gets [1.9912, 0.89471]
+#x_init = [1; 0.957]; # gets [1.9912, 0.89471]
 #x_init = [1.;-.1]
 #x_optimal = [1; 0.957]
 #x_optimal = [-1.; 1]
 elapsed_time = @elapsed begin
-    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, norm_dv_len=10, conv_dv_len=1, is_checking_min=true, is_checking_x_agree=true, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=false, init_solver="PATH", solver="PATH")
+    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, is_forcing_inactive_inds=false, init_solver="IPOPT", solver="IPOPT")
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)

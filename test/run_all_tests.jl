@@ -9,7 +9,7 @@ function call_solve_bop(p, x_init; verbosity=0, tol=1e-7)
     end
 
     bop, syms = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g; verbosity=0, np=0)
-    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, norm_dv_len=10, conv_dv_len=1, is_checking_min=true, is_checking_x_agree=true, is_always_hp=false, init_solver="IPOPT", solver="IPOPT")
+    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, init_solver="IPOPT", solver="IPOPT")
 
     Ff = [bop.F(x); bop.f(x)]
     if verbosity > 0
@@ -72,7 +72,7 @@ end
 
 include("./lp-lp/ct_1982_01.jl")
 """
-broken
+converges to local sol [0.5, 0.5, 0, 0, 0, 0.48687056090227804 ,0 ,0]
 """
 function test_ct_1982_01(; tol=1e-7, n=3, rng=MersenneTwister(123))
     p = ct_1982_01()
@@ -80,7 +80,7 @@ function test_ct_1982_01(; tol=1e-7, n=3, rng=MersenneTwister(123))
         for _ = 1:n
             x_init = randn(rng, p.n1 + p.n2)
             is_sol_valid, x = call_solve_bop(p, x_init; tol)
-            @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol) broken = true
+            @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol) broken=true
         end
     end
 end
