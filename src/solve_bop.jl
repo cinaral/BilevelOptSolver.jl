@@ -273,7 +273,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 end
             end
             if verbosity > 4
-                print("Considering SBOP$(i_arr[i]): F(x): $(round.(Fs[i],sigdigits=2)) f(x): $(round.(fs[i],sigdigits=2))...\n")
+                print("Considering SBOP$(i_arr[i]): F(x): $(round.(Fs[i],sigdigits=2)) f(x): $(round.(fs[i],sigdigits=2))\n")
             end
             if Fs[i] < F_  # choose the smallest available F value
                 chosen_i = i_arr[i]
@@ -404,6 +404,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                     print("Converged but solution is invalid, restarting with random init (attempt $random_restart_count)\n")
                 end
                 v[bop.inds.v["x"]] .= randn(rng, bop.nx, 1)
+                is_converged = false
                 init_counter = 0
                 is_initialized=false
             else

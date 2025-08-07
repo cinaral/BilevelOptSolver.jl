@@ -1,11 +1,5 @@
-using BilevelOptSolver
-
-# 2025-08-06 TODO: if y_init=-0.09375, we will be stuck at a local maximum. we should randomize to get out of there
-
 """ 
 [as_1981_01](https://basblsolver.github.io/BASBLib/QP-QP/as_1981_01)
-
-linear f
 """
 function as_1981_01()
     n1::Int64 = 4

@@ -1,7 +1,3 @@
-using BilevelOptSolver
-
-# 2025-08-06 TODO: if y_init=-0.09375, we will be stuck at a local maximum. we should randomize to get out of there
-
 """ 
 [mb_2007_01](https://basblsolver.github.io/BASBLib/LP-LP/mb_2007_01)
 

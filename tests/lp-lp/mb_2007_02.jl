@@ -1,5 +1,3 @@
-using BilevelOptSolver
-
 """ 
 [mb_2007_02](https://basblsolver.github.io/BASBLib/LP-LP/mb_2007_02)
 
