@@ -1,14 +1,11 @@
 using BilevelOptSolver
 
-# 2025-08-06 TODO: if y_init=-0.09375, we will be stuck at a local maximum. we should randomize to get out of there
-
 """ 
-[mb_2007_05](https://basblsolver.github.io/BASBLib/LP-NLP/mb_2007_05)
+[mb_2007_02](https://basblsolver.github.io/BASBLib/LP-LP/mb_2007_02)
 
-nonconvex f
-stationary points of f are y={-0.5, -0.09375, 0.5}
+linear f, but at follower solution leader is unfeasible
 """
-function mb_2007_05()
+function mb_2007_02()
     n1::Int64 = 0
     n2::Int64 = 1
 
@@ -22,6 +19,7 @@ function mb_2007_05()
         x = @view xy[1:n1]
         y = @view xy[n1+1:n1+n2]
         [
+            -y[1]
             y[1] + 1.0
             1.0 - y[1]
         ]
@@ -30,7 +28,7 @@ function mb_2007_05()
     function f(xy)
         x = @view xy[1:n1]
         y = @view xy[n1+1:n1+n2]
-        16 * y[1]^4 + 2 * y[1]^3 - 8 * y[1]^2 - 1.5 * y[1] + 0.5
+        -y[1]
     end
 
     function g(xy)
@@ -42,10 +40,10 @@ function mb_2007_05()
         ]
     end
 
-    xy_init = [-0.09375]
-    xy_optimal = [0.5]
-    Ff_optimal = [0.5; -1.0]
-    name = "mb_2007_05"
+    xy_init = [.1]
+    xy_optimal = []
+    Ff_optimal = [1.0; -1.0]
+    name = "mb_2007_02"
 
     (; n1, n2, F, G, f, g, xy_init, xy_optimal, Ff_optimal, name)
 end

@@ -60,11 +60,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     end
 
     iter_count = 0
+    is_done = false
     is_converged = false
     is_initialized = false
     status = "uninitialized"
 
-    while !is_converged
+    while !is_done
         if iter_count >= max_iter
             if verbosity > 0
                 print("Max iterations ($iter_count) reached!\n")
@@ -148,7 +149,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         if n_J > 1 && verbosity > 1
-            print("Multiple feasible sets ($n_J) detected at!\n")
+            print("Multiple feasible sets ($n_J) detected!\n")
         end
 
         # solve for all feasible sets
@@ -727,30 +728,7 @@ function compute_follow_feas_ind_sets(bop, v; tol=1e-3, verbosity=0, is_forcing_
     zu = bop.zu₀
     is_valid, K = check_mcp_sol(bop, bop.nz, h, z, zl, zu; tol, is_forcing_inactive_inds)
 
-    #K = Dict{Int,Vector{Int}}()
-    #for j in 1:bop.nz
-    #    Kj = Int[]
-    #    if j <= bop.n2
-    #        push!(Kj, 2) # case 2
-    #    else
-    #        if h[j] > tol
-    #            push!(Kj, 1) # case 1
-    #            push!(Kj, 2) # case 2
-    #        else
-    #            push!(Kj, 1) # case 1
-    #        end
-    #    end
-
-    #    K[j] = Kj
-    #end
-    #is_valid = !any(isempty.(Kj for Kj in values(K)))
-
-    #Main.@infiltrate
-
     if !is_valid
-        #if verbosity > 0
-        #    print("Failed to compute follower feasible index sets: Not a valid solution!\n")
-        #end
         return Js
     end
 
