@@ -24,14 +24,14 @@ function as_1981_01()
             15.0 - x[3]
             x[4]
             20.0 - x[4]
-            y[1]
-            20.0 - y[1]
-            y[2]
-            20.0 - y[2]
-            y[3]
-            40.0 - y[3]
-            y[4]
-            40.0 - y[4]
+            #y[1]
+            #20.0 - y[1]
+            #y[2]
+            #20.0 - y[2]
+            #y[3]
+            #40.0 - y[3]
+            #y[4]
+            #40.0 - y[4]
         ]
     end
 
@@ -60,10 +60,9 @@ function as_1981_01()
         ]
     end
 
-    xy_init = [0.1; 0.1; 0.1; 0.1; 0.1; 0.1; 0.1; 0.1]
     xy_optimal = [7.0; 3.0; 12.0; 18.0; 0.0; 10.0; 30.0; 0.0]
     Ff_optimal = [-6600.0; 54.0]
     name = "as_1981_01"
 
-    (; n1, n2, F, G, f, g, xy_init, xy_optimal, Ff_optimal, name)
+    (; n1, n2, F, G, f, g, xy_optimal, Ff_optimal, name)
 end

@@ -18,11 +18,11 @@
 |LP-NLP|||
 |[mb_2007_05](./lp-nlp/mb_2007_05.jl)|MitsosBarton2006Ex35||
 |[mb_2007_06](./lp-nlp/mb_2007_06.jl)|||
-|[mb_2007_13](./lp-nlp/mb_2007_13.jl)|||
+|[mb_2007_13](./lp-nlp/mb_2007_13.jl)|KleniatiAdjiman2014Ex3||
 |[mb_2007_13v](./lp-nlp/mb_2007_13v.jl)|||
-|[ka_2014_01](./lp-nlp/ka_2014_01.jl)|KleniatiAdjiman2014Ex3|our method fails for x<0|
+|[ka_2014_01](./lp-nlp/ka_2014_01.jl)||our method fails for x<0|
 |NLP-NLP|
-|[ka_2014_02](./nlp-nlp/ka_2014_02.jl)|||
+|[ka_2014_02](./nlp-nlp/ka_2014_02.jl)|KleniatiAdjiman2014Ex4||
 
 |no optimal solutions|
 |---|

@@ -1,0 +1,1 @@
+include("./run_all_tests.jl")

@@ -19,6 +19,7 @@ function bf_1982_02()
             10.0 - x[1]
             x[2]
             10.0 - x[2]
+            # fails without this:
             y[1]
             10.0 - y[1]
             y[2]

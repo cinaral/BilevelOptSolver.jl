@@ -225,23 +225,42 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             if verbosity > 1
                 print("Failed to solve any SBOPi!\n")
             end
-            if no_sol_counter > max_no_sols
-                status = "max_no_sols"
+            #if no_sol_counter > max_no_sols
+            #    status = "max_no_sols"
+            #    break
+            #end
+            # copy pasted, should be made cleaner
+            if random_restart_count < max_random_restart_count
+                random_restart_count += 1
+                if verbosity > 0
+                    print("No solutions, restarting with random init (attempt $random_restart_count)\n")
+                end
+                v[bop.inds.v["x"]] .= randn(rng, bop.nx, 1)
+                is_converged = false
+                init_counter = 0
+                is_initialized = false
+                prev_iter_v = zeros(bop.n)
+                continue
+            else
+                if verbosity > 0
+                    print("Reached maximum number of random restarts! Terminating\n")
+                end
+                status = "max_random_restarts"
+                is_done = true
                 break
             end
-
-            is_necessary, _ = check_follower_sol(v, bop; tol=1e2 * tol)
-            if !is_necessary
-                is_initialized = false
-                if verbosity > 0
-                    print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
-                end
-                is_prev_v_set = false
-                norm_dv_arr .= 0.0
-                norm_dv_cur_idx = 1
-                status = "uninitialized"
-            end
-            continue
+            #is_necessary, _ = check_follower_sol(v, bop; tol=1e2 * tol)
+            #if !is_necessary
+            #    is_initialized = false
+            #    if verbosity > 0
+            #        print("Iteration $iter_count: Invalid follower solution, we must initialize again!\n")
+            #    end
+            #    is_prev_v_set = false
+            #    norm_dv_arr .= 0.0
+            #    norm_dv_cur_idx = 1
+            #    status = "uninitialized"
+            #end
+            #continue
         end
 
         # if none of the follower's are actually solved, we still need to reinitialize
@@ -406,12 +425,13 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 v[bop.inds.v["x"]] .= randn(rng, bop.nx, 1)
                 is_converged = false
                 init_counter = 0
-                is_initialized=false
+                is_initialized = false
+                prev_iter_v = zeros(bop.n)
             else
                 if verbosity > 0
                     print("Reached maximum number of random restarts! Terminating\n")
                 end
-                status="max_random_restarts"
+                status = "max_random_restarts"
                 is_done = true
             end
         end
