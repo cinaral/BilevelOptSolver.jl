@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true)
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=false, conv_tol=1e-4, norm_dv_len=10, conv_dv_len=2, is_checking_min=false, max_no_sols=2, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true, rng=MersenneTwister(123), max_random_restart_count=10)
 
     if is_forcing_inactive_inds && is_require_all_solved
         if verbosity > 0
@@ -63,6 +63,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     is_done = false
     is_converged = false
     is_initialized = false
+    random_restart_count = 0
     status = "uninitialized"
 
     while !is_done
@@ -367,14 +368,14 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 end
                 is_converged = true
                 status = "converged"
-                break
+                #break
             elseif is_norm_dv_full && all(diff(chron_norm_dv_arr) .≤ -tol)
                 # also it's worth checking if dv is slowly
                 if verbosity > 3
                     print("last $norm_dv_len norm(dv) is monotonously decreasing without meeting conv tol, terminating\n")
                 end
                 status = "monoton_decreasing"
-                break
+                #break
             end
 
             if verbosity > 1
@@ -390,7 +391,28 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         if !has_v_changed
             # are there even any new v's to choose from?
             status = "v_unchanged"
-            break
+            is_converged = true
+        end
+
+        # randomized restart
+        if is_converged && is_sol_valid
+            is_done = true
+        elseif is_converged && !is_sol_valid
+            if random_restart_count < max_random_restart_count
+                random_restart_count += 1
+                if verbosity > 0
+                    print("Converged but solution is invalid, restarting with random init (attempt $random_restart_count)\n")
+                end
+                v[bop.inds.v["x"]] .= randn(rng, bop.nx, 1)
+                init_counter = 0
+                is_initialized=false
+            else
+                if verbosity > 0
+                    print("Reached maximum number of random restarts! Terminating\n")
+                end
+                status="max_random_restarts"
+                is_done = true
+            end
         end
     end
 
@@ -404,7 +426,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
             if verbosity > 0
                 print("Something went VERY wrong!\n")
             end
-            status = "very_wrong"
+            status = "very_wrong;"
             is_sol_valid = false
         end
     end
@@ -647,7 +669,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
             Z = V[:, n-r+1:n]
             min_eig = eigmin(Z' * ∇²ₓL * Z)
         elseif n - r == 0 # trivial case
-            min_eig = 0.
+            min_eig = 0.0
         end
     end
 

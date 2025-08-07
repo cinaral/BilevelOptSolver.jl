@@ -3,18 +3,6 @@ using Test
 using Random
 # 2025-08-06 TODO: add randomization, add forced randomization, fix x agreement logic
 
-include("./lp-qp/mb_2006_01.jl")
-include("./lp-qp/mb_2007_03.jl")
-include("./lp-qp/mb_2007_04.jl")
-include("./lp-qp/b_1991_02.jl")
-include("./lp-qp/as_1984_01.jl")
-
-include("./qp-qp/as_1981_01.jl")
-
-
-include("./lp-nlp/mb_2007_13.jl")
-include("./lp-nlp/mb_2007_13v.jl")
-
 function call_solve_bop(p, x_init; verbosity=0)
     if verbosity > 0
         print("$(p.name):\n")
@@ -99,7 +87,7 @@ function test_mb_2007_06(; tol=1e-6, n=10)
         is_sol_valid, x, _, _, _ = call_solve_bop(p, x_init)
         @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
 
-        # need randomization
+        # needs randomization
         x_init = [0.0]
         is_sol_valid, x, _, _, _ = call_solve_bop(p, x_init)
         @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
@@ -110,8 +98,22 @@ function test_mb_2007_06(; tol=1e-6, n=10)
     end
 end
 
-function run_tests()
 
+include("./lp-nlp/mb_2007_13.jl")
+
+
+include("./lp-nlp/mb_2007_13v.jl")
+
+include("./lp-qp/mb_2006_01.jl")
+include("./lp-qp/mb_2007_03.jl")
+include("./lp-qp/mb_2007_04.jl")
+include("./lp-qp/b_1991_02.jl")
+include("./lp-qp/as_1984_01.jl")
+
+include("./qp-qp/as_1981_01.jl")
+
+
+function run_tests()
     test_mb_2007_01()
     test_mb_2007_02()
     test_mb_2007_05()
