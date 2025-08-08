@@ -7,7 +7,7 @@ import BOLIB
 
 using DataFrames
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree=true, init_solver="PATH", solver="PATH", tol=1e-7, conv_dv_len=3, is_always_hp=false, is_forcing_inactive_inds=false)
+function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree=true, init_solver="PATH", solver="PATH", tol=1e-7, conv_dv_len=3, is_always_hp=false, is_forcing_inactive_inds=false, max_random_restart_count=10)
     prob_count = 0
     success_count = 0
     optimalish_count = 0
@@ -51,7 +51,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, is_checking_x_agree
         is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=1, x_init=p.xy_init, verbosity=0, is_checking_x_agree, tol, conv_dv_len, init_solver, solver, is_always_hp, is_forcing_inactive_inds)
 
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, conv_dv_len, init_solver, solver, is_always_hp, is_forcing_inactive_inds)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, is_checking_x_agree, tol, conv_dv_len, init_solver, solver, is_always_hp, is_forcing_inactive_inds, max_random_restart_count)
         end
 
         is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong = rate_BOLIB_result(p, bop, x)

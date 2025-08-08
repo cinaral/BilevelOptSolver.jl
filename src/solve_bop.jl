@@ -116,7 +116,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                     print("Iteration $iter_count: Failed to (re)initialize!\n")
                 end
                 status = "init_fail"
-                break
+                is_random_restart = true
+                continue
             end
         end
 
@@ -214,7 +215,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
             else
                 if verbosity > 1
-                    print("SBOP$i: FAILED J2: $(J[2])\n")
+                    print("SBOP$i: FAILED J2: $(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
                 end
             end
         end
@@ -256,7 +257,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         if verbosity > 1
-            print("Chose SBOP$chosen_i x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
+            print("Chose SBOP$chosen_i x=$(round.(v[bop.inds.v["x"]],sigdigits=3)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=3))\n")
         end
 
         #all(is_necc_SBOPi) # this will usually be false
@@ -288,22 +289,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         if is_require_all_solved && !is_all_solved
             is_sol_valid = false
         end
-
-        ## optional check
-        #if is_checking_x_agree && is_sol_valid && length(v_arr) > 1
-        #    for (i, vv) in enumerate(v_arr)
-        #        if i < n_J
-        #            norm_x_err = LinearAlgebra.norm(v_arr[i+1][bop.inds.v["x"]] - vv[bop.inds.v["x"]]) # only checking x error
-        #            if (norm_x_err > x_agree_tol)
-        #                if verbosity > 1
-        #                    print("SBOPi solutions disagree! norm x err: $norm_x_err\n")
-        #                end
-        #                is_sol_valid = false
-        #                break
-        #            end
-        #        end
-        #    end
-        #end
 
         # we check if the solution has converged even if the solution is not valid
         if !is_prev_v_set

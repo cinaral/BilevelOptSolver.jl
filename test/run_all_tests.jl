@@ -114,7 +114,7 @@ function test_mb_2007_03(; tol=1e-7, n=10, rng=MersenneTwister(123))
     @testset "mb_2007_03" begin
         x_init = [0.0]
         is_sol_valid, x = call_solve_bop(p, x_init; tol)
-        @test is_sol_valid && (isapprox(x, p.xy_optimal; atol=tol) || isapprox(x, [1.0]; atol=tol))
+        @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
 
         for _ = 1:n-1
             x_init = randn(rng, p.n1 + p.n2)
