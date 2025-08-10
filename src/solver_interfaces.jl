@@ -110,7 +110,7 @@ x s.t. at least one of the following holds:
 J is the Jacobian: ∇ₓF
 ```
 """
-function setup_mcp_solve_PATH(n, xl, xu, F, J_rows, J_cols, J_vals!)
+function setup_mcp_solve_PATH(n, xl, xu, F, J_rows, J_cols, J_vals!; verbosity=0)
     #@assert(n == length(x_l), "wrong x_l dimensions")
     #@assert(n == length(x_u), "wrong x_u dimensions")
 

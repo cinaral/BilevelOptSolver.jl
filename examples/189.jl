@@ -31,9 +31,9 @@ end
 #x_init =  [0; 0; 1.1097; 0.3143; −0.8184] # causes a bug
 x_optimal = [−10.02; 0.82]
 x_init = x_optimal
-bop = construct_bop(n₁, n₂, F, G, f, g);
+bop, syms = construct_bop(n₁, n₂, F, G, f, g);
 
-x, status, iter_count = solve_bop(bop; x_init, verbosity=5)
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity=5)
 
 Ff = [bop.F(x); bop.f(x)]
 Ff_optimal = [bop.F(x_optimal); bop.f(x_optimal)]

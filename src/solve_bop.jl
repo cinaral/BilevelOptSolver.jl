@@ -24,7 +24,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     # buffers
     v = zeros(bop.n + bop.np)
     v[bop.inds.v["x"]] .= x_init[1:bop.nx]
-    v[bop.inds.v["p"]] .= param
+    #v[bop.inds.v["p"]] .= param
     Λ = zeros(bop.m)
     v_correspond_Js = copy(v)
 
@@ -53,8 +53,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
     elseif solver == "PATH"
         solve_SBOPi_PATH! = setup_solve_SBOPi_PATH(bop)
     end
-
     # restart stuff
+
     fol_feas_set_tol = 1e3 * copy(tol)
     is_done = false
     is_converged = false
@@ -232,8 +232,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
         end
 
         # update v based on cost among the solutions
-        Fs = map(v -> bop.F(v[bop.inds.v["x"]]), v_arr)
-        fs = map(v -> bop.f(v[bop.inds.v["x"]]), v_arr)
+        Fs = map(v -> bop.F([v[bop.inds.v["x"]]; param]), v_arr)
+        fs = map(v -> bop.f([v[bop.inds.v["x"]]; param]), v_arr)
         F_ = Inf
         chosen_i = 0
         for (i, is_fol_nec) in enumerate(is_necc_fol)
@@ -346,7 +346,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
     # final sanity check
     if is_sol_valid
-        if !(all(bop.G(x) .≥ 0 - tol) && all(bop.g(x) .≥ 0 - tol))
+        if !(all(bop.G([x; param]) .≥ 0 - tol) && all(bop.g([x; param]) .≥ 0 - tol))
             if verbosity > 0
                 print("Something went VERY wrong!\n")
             end
@@ -375,6 +375,7 @@ function initialize_z!(v, bop; verbosity=0, init_solver="IPOPT", tol=1e-6, max_i
     if !is_always_hp
         (; x, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, param=v[bop.inds.v["p"]])
     end
+
     # if failure it may be that the feasible region of the follower is empty for x₁
     if !success
         if verbosity > 0
@@ -443,8 +444,9 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.n2), param=zeros(bop.np),
         success = solvestat == 0
 
     elseif solver == "PATH"
-        v = zeros(bop.n)
-        v[bop.inds.v["x"]] .= x
+        v = zeros(bop.n + bop.np)
+        v[bop.inds.v["x1"]] .= x1
+        v[bop.inds.v["p"]] .= param
         z_init = zeros(bop.nz)
         z_init[bop.inds.z["x2"]] = x2_init
 
@@ -482,12 +484,13 @@ function solve_high_point_nlp(bop; x_init=zeros(bop.nx + bop.np), tol=1e-6, max_
     (; x, λ, success)
 end
 
+# TODO: 2025-08-09: the way params are handled are wrong
 function setup_solve_SBOPi_IPOPT(bop)
-    vl = fill(-Inf, bop.n + bop.np)
-    vu = fill(Inf, bop.n + bop.np)
+    vl = fill(-Inf, bop.n)
+    vu = fill(Inf, bop.n)
     Γl = fill(0.0, bop.m)
     Γu₀ = fill(Inf, bop.m) # doesn't change
-    solve_SBOPi_IPOPT = setup_nlp_solve_IPOPT(bop.n + bop.np, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
+    solve_SBOPi_IPOPT = setup_nlp_solve_IPOPT(bop.n, bop.m, vl, vu, Γl, Γu₀, bop.Fv, bop.Γ!, bop.∇ᵥF!, bop.∇ᵥΓ_rows, bop.∇ᵥΓ_cols, bop.∇ᵥΓ_vals!, bop.∇²ᵥL1_rows, bop.∇²ᵥL1_cols, bop.∇²ᵥL1_vals!)
 
     function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=1000)
         Γl[bop.inds.Γ["hl"]] .= hl
@@ -495,7 +498,7 @@ function setup_solve_SBOPi_IPOPT(bop)
         Γl[bop.inds.Γ["hu"]] .= -hu
         Γl[bop.inds.Γ["zu"]] .= -zu
         v_out, Λ_out, solvestat, _ = solve_SBOPi_IPOPT(; gl=Γl, x_init=v, λ_init=Λ, tol, max_iter, print_level=0)
-        v[1:bop.n] .= v_out[1:bop.n]
+        v[bop.inds.v["v"]] .= v_out[bop.inds.v["v"]]
         Λ .= Λ_out
         success = solvestat == 0
         success
@@ -503,14 +506,16 @@ function setup_solve_SBOPi_IPOPT(bop)
     solve_SBOPi!
 end
 
+# TODO: 2025-08-09: the way params are handled are wrong
 function setup_solve_SBOPi_PATH(bop)
     θ_init = zeros(bop.nθ)
     θl = copy(bop.θl₀)
     θu = copy(bop.θu₀)
+
     solve_SBOPi_PATH = setup_mcp_solve_PATH(bop.nθ, θl, θu, bop.Φ!, bop.∇Φ_rows, bop.∇Φ_cols, bop.∇Φ_vals!)
 
     function solve_SBOPi!(v, Λ, hl, hu, zl, zu; tol=1e-6, max_iter=5000)
-        θ_init[bop.inds.θ["v"]] .= v
+        θ_init[bop.inds.θ["v"]] .= v[bop.inds.v["v"]]
         θ_init[bop.inds.θ["Λ"]] .= Λ
         θl[bop.inds.θ["rzl"]] .= zl
         θl[bop.inds.θ["rhl"]] .= hl
@@ -518,7 +523,7 @@ function setup_solve_SBOPi_PATH(bop)
         θl[bop.inds.θ["rhu"]] .= -hu
 
         θ_out, status, _ = solve_SBOPi_PATH(; xl=θl, x_init=θ_init, tol, max_iter, is_silent=true)
-        v .= θ_out[bop.inds.θ["v"]]
+        v[bop.inds.v["v"]] .= θ_out[bop.inds.θ["v"]]
         Λ .= θ_out[bop.inds.θ["Λ"]]
         success = status == PATHSolver.MCP_Solved
         success

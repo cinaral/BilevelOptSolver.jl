@@ -109,7 +109,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     nz = n2 + m2
     n = n1 + nz
     m = m1 + 4 * nz
-    nθ = n + 2*m
+    nθ = n + 2 * m
 
     x1_sym = Symbolics.@variables(x[1:n1])[1] |> Symbolics.scalarize
     x2_sym = Symbolics.@variables(y[1:n2])[1] |> Symbolics.scalarize
@@ -345,6 +345,7 @@ function define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
     x_inds = Dict{String,UnitRange{Int64}}([
         ("x1", 1:n1),
         ("x2", n1+1:n1+n2),
+        ("x", 1:n1+n2),
         ("p", n1+n2+1:n1+n2+np)
     ])
 
@@ -356,6 +357,7 @@ function define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
     v_inds = Dict{String,UnitRange{Int64}}([
         ("x1", 1:n1),
         ("z", n1+1:n1+nz),
+        ("v" => 1:n1+nz),
         ("p", n1+nz+1:n1+nz+np),
         ("x", 1:nx),
         ("x2", n1+1:nx),
@@ -373,8 +375,9 @@ function define_index_dicts(n1, n2, m1, m2, nx, np, nz, n, m)
     θ_inds = Dict{String,UnitRange{Int64}}([
         ("v" => 1:n),
         ("Λ" => n+1:n+m),
-        ("r" => n+m+1: n+2*m),
+        ("r" => n+m+1:n+2*m),
         ("p" => n+2*m+1:n+2*m+np),
+        ("θ" => 1:n+2*m),
         ("z", n1+1:n1+nz),
         ("ΛG" => n+1:n+m1),
         ("Λhl" => n+m1+1:n+m1+nz),
