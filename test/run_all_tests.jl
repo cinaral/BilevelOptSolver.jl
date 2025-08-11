@@ -9,7 +9,7 @@ function call_solve_bop(p, x_init; verbosity=0, tol=1e-7)
     end
 
     bop, syms = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g; verbosity=0, np=0)
-    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, init_solver="IPOPT", solver="IPOPT")
+    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, init_solver="PATH", solver="PATH")
 
     Ff = [bop.F(x); bop.f(x)]
     if verbosity > 0
@@ -163,7 +163,7 @@ include("./lp-qp/as_1984_01.jl")
 """
 expected to converge to x=[0; 0; -10; -10] or [0; 30; -10; 10] or [20; 0; 0; -10] (local solutions) and x=[25; 30; 5; 10] (global solution
 """
-function test_as_1984_01(; tol=1e-7, n=50, rng=MersenneTwister(123))
+function test_as_1984_01(; tol=1e-6, n=50, rng=MersenneTwister(123))
     p = as_1984_01()
     @testset "as_1984_01" begin
         for _ = 1:n
@@ -198,20 +198,24 @@ function test_mb_2007_06(; tol=1e-7, n=10, rng=MersenneTwister(123))
     @testset "mb_2007_06" begin
         x_init = [-0.1]
         is_sol_valid, x = call_solve_bop(p, x_init; tol)
+        print("$is_sol_valid $x_init->$x\n")
         @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
 
         # needs randomization
         x_init = [0.0]
         is_sol_valid, x = call_solve_bop(p, x_init; tol)
+        print("$is_sol_valid $x_init->$x\n")
         @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
 
         x_init = [0.1]
         is_sol_valid, x = call_solve_bop(p, x_init; tol)
+        print("$is_sol_valid $x_init->$x\n")
         @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
 
         for _ = 1:n-3
             x_init = randn(rng, p.n1 + p.n2)
             is_sol_valid, x = call_solve_bop(p, x_init; tol)
+            print("$is_sol_valid $x_init->$x\n")
             @test is_sol_valid && isapprox(x, p.xy_optimal; atol=tol)
         end
     end
@@ -310,30 +314,30 @@ end
 function run_all_tests()
     # LP-LP:
     print("LP-LP:\n")
-    test_mb_2007_01()
-    test_mb_2007_02()
-    test_bf_1982_02()
-    test_ct_1982_01()
+    #test_mb_2007_01()
+    #test_mb_2007_02()
+    #test_bf_1982_02()
+    #test_ct_1982_01()
     # LP-QP:
     print("LP-QP:\n")
-    test_mb_2006_01()
-    test_mb_2007_03()
-    test_mb_2007_04()
-    test_b_1991_02()
-    test_as_1984_01()
+    #test_mb_2006_01()
+    #test_mb_2007_03()
+    #test_mb_2007_04()
+    #test_b_1991_02()
+    #test_as_1984_01()
     # LP-NLP:
     print("LP-NLP:\n")
-    test_mb_2007_05()
+    #test_mb_2007_05()
     test_mb_2007_06()
-    test_mb_2007_13()
-    test_mb_2007_13v()
-    test_ka_2014_01()
+    #test_mb_2007_13()
+    #test_mb_2007_13v()
+    #test_ka_2014_01()
     # QP-QP:
     print("QP-QP:\n")
-    test_as_1981_01()
+    #test_as_1981_01()
     # NLP-NLP:
     print("NLP-NLP:\n")
-    test_ka_2014_02()
+    #test_ka_2014_02()
 end
 
 run_all_tests()

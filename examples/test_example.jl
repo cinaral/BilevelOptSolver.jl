@@ -1,10 +1,11 @@
 using BilevelOptSolver
 using Random
-include("../test/lp-lp/bf_1982_02.jl")
-p = bf_1982_02()
+include("../test/lp-nlp/mb_2007_06.jl")
+p = mb_2007_06()
 bop, syms = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g; verbosity=0, np=0)
-x_init = randn(MersenneTwister(456), p.n1 + p.n2)
-is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-5, norm_dv_len=10, conv_dv_len=1, is_checking_x_agree=true, is_always_hp=false, init_solver="IPOPT", solver="IPOPT")
+#x_init = randn(MersenneTwister(456), p.n1 + p.n2)
+x_init = [0.01]
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, init_solver="IPOPT", solver="IPOPT")
 
 Ff = [bop.F(x); bop.f(x)]
 

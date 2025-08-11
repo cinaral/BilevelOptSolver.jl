@@ -91,6 +91,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 is_prev_v_set = false
                 norm_dv_arr .= 0.0
                 norm_dv_cur_idx = 1
+                empty!(J2_seen_arr)
+                empty!(v_seen_arr)
+                empty!(Λ_seen_arr)
+                empty!(is_solved_seen_arr)
                 status = "uninitialized"
                 prev_iter_v = zeros(bop.n)
             else
