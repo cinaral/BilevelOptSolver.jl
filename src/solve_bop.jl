@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-4, conv_dv_len=3, max_inits=2, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true, rng=MersenneTwister(123), max_random_restart_count=10, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
+function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", is_checking_x_agree=true, conv_tol=1e-4, conv_dv_len=3, is_always_hp=false, is_forcing_inactive_inds=false, is_require_all_solved=true, is_nonstrict_ok=true, rng=MersenneTwister(123), max_random_restart_count=10, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx),)
 
     if is_forcing_inactive_inds && is_require_all_solved
         if verbosity > 0
@@ -206,7 +206,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 if norm_dv > conv_tol
                     has_v_changed = true
                 end
-                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol)
+                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; tol=1e2 * tol, is_nonstrict_ok)
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
                 push!(v_arr, copy(v))
@@ -535,11 +535,11 @@ function setup_solve_SBOPi_PATH(bop)
     solve_SBOPi!
 end
 
-function check_follower_sol(v, bop; tol=1e-5)
+function check_follower_sol(v, bop; tol=1e-5, is_nonstrict_ok=true)
     x = @view v[bop.inds.v["x"]]
     λ = @view v[bop.inds.v["λ"]]
 
-    check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!; tol)
+    check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!; tol, is_nonstrict_ok)
 end
 
 function check_SBOPi_sol(v, Λ, bop, hl, hu, zl, zu; tol=1e-5)
@@ -555,7 +555,7 @@ end
 """
 n_actual refers to part of v that corresponds to x1 and x2, and without the λ part which always violates SC 
 """
-function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-5)
+function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; tol=1e-5, is_nonstrict_ok=true)
     #@assert(n == length(x))
     @assert(m == length(λ))
     @assert(m == length(gl))
@@ -585,7 +585,9 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     end
 
     min_eig = -Inf
+    is_sufficient = false
 
+    # certification: there exists no direction that is both descent and feasible
     if isempty(active_js) # unconstrained problem
         if n > 1
             min_eig = eigmin(Matrix(∇²ₓL))
@@ -595,27 +597,32 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
     else
         C = Matrix(∇ₓg[active_js, :])
         _, _, V = svd(C; full=true)
-
         r = rank(C)
-        # 2025-08-04 TODO: what about when nullspace is empty?
+        # 2025-08-04 TODO: what about when nullspace is just zero
         if n - r > 0
             Z = V[:, n-r+1:n]
             min_eig = eigmin(Z' * ∇²ₓL * Z)
-        elseif n - r == 0 # trivial case
-            min_eig = 0.0
+        elseif n - r == 0 # no feasible directions exist
+            is_sufficient = true
+        else # overdetermined?
+            @warn "overdetermined"
         end
     end
 
-    is_sufficient = false
-    if min_eig ≥ tol
+    if min_eig ≥ tol # SOSC
         is_sufficient = true # strict minimum
     elseif isapprox(min_eig, 0; atol=tol)
-        is_sufficient = true # not strict minimum
+        if is_nonstrict_ok # SONC
+            is_sufficient = true
+        else  # SOSC
+            is_sufficient = false
+        end
     end
 
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
     is_sufficient = is_necessary && is_sufficient
 
+    Main.@infiltrate
     (; is_necessary, is_sufficient)
 end
 
