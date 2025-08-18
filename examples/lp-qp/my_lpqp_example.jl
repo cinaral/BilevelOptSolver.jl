@@ -53,7 +53,7 @@ x_init = [0.5; -0.5]  # leads to [1;-1] (optimal)
 #x_init = [-.5; .5]  # leads to [0.;0.] (feasible)
 bop, syms = construct_bop(n1, n2, F, G, f, g; verbosity=0, np)
 param = [1.0; 1.0]
-is_sol_valid, x, λ, iter_count, status = solve_bop(bop; param, max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, init_solver="PATH", solver="PATH")
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; param, max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, is_nonstrict_ok=false, init_solver="IPOPT", solver="IPOPT")
 
 Ff = [bop.F([x; param]); bop.f([x; param])]
 

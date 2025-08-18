@@ -45,12 +45,12 @@ MitsosBarton2006Ex32 F (no solution exists)
 MitsosBarton2006Ex35 B
 MitsosBarton2006Ex36 F
 """
-b = BOLIB.MitsosBarton2006Ex36()
+b = BOLIB.TuyEtal2007Ex3()
 
 bop, syms = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g; verbosity=0, np=0)
 x_init = b.xy_init
 elapsed_time = @elapsed begin
-    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, is_forcing_inactive_inds=false, init_solver="PATH", solver="PATH")
+    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, is_forcing_inactive_inds=false, is_nonstrict_ok=false, max_random_restart_count=50, init_solver="PATH", solver="PATH")
 end
 
 is_optimal, is_best, Ff, Ff_star, rating = rate_BOLIB_result(b, bop, x)
