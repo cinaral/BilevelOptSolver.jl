@@ -196,7 +196,7 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     # ∇²ᵥL1, L1 = F(v) - Λ' Γ(v)
     Λ_sym = Symbolics.@variables(Λ[1:m])[1] |> Symbolics.scalarize
     of1_sym = Symbolics.@variables(λ₀)[1] # objective factor
-    if isempty(λ_sym)
+    if isempty(Λ_sym)
         L1_sym = of1_sym * F_sym
     else
         L1_sym = of1_sym * F_sym - Γ_sym' * Λ_sym
@@ -251,6 +251,8 @@ function construct_bop(n1, n2, F, G, f, g; np=0, verbosity=0)
     ∇²ₓL3_size = size(∇²ₓL3_sym)
     (∇²ₓL3_rows, ∇²ₓL3_cols, ∇²ₓL3_vals_sym) = SparseArrays.findnz(∇²ₓL3_sym)
     ∇²ₓL3_vals! = Symbolics.build_function(∇²ₓL3_vals_sym, xp_sym, Λ₃_sym, of3_sym; expression=Val{false})[2]
+
+    #Main.@infiltrate
 
     bop = BilevelOptProb(
         F,

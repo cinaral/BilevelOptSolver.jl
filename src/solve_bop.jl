@@ -526,7 +526,6 @@ function setup_solve_SBOPi_PATH(bop)
         θl[bop.inds.θ["rzu"]] .= -zu
         θl[bop.inds.θ["rhu"]] .= -hu
 
-        Main.@infiltrate
         θ_out, status, _ = solve_SBOPi_PATH(; xl=θl, x_init=θ_init, tol, max_iter, is_silent=true)
         v[bop.inds.v["v"]] .= θ_out[bop.inds.θ["v"]]
         Λ .= θ_out[bop.inds.θ["Λ"]]
