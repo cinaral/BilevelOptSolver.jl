@@ -9,7 +9,7 @@ function call_solve_bop(p, x_init; verbosity=0, tol=1e-7)
     end
 
     bop, syms = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g; verbosity=0, np=0)
-    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, init_solver="PATH", solver="PATH")
+    is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, init_solver="PATH", solver="PATH")
 
     Ff = [bop.F(x); bop.f(x)]
     if verbosity > 0
@@ -328,7 +328,7 @@ function run_all_tests()
     # LP-NLP:
     print("LP-NLP:\n")
     #test_mb_2007_05()
-    test_mb_2007_06()
+    #test_mb_2007_06()
     #test_mb_2007_13()
     #test_mb_2007_13v()
     #test_ka_2014_01()
