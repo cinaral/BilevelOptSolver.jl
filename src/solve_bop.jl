@@ -132,7 +132,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                 if verbosity > 1
                     print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
                 end
-                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, is_forcing_inactive_inds)
+                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
                 tol_restart_count += 1
             end
         end
