@@ -127,6 +127,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
 
         # compute feasible sets
         # by this point, v must at least satisfy the follower's problem
+       
         follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, verbosity, is_forcing_inactive_inds)
         if length(follow_feas_Js) == 0
             if verbosity > 1
@@ -189,9 +190,9 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=zeros(bop.np), tol=1e-6, fol
                 end
             else
                 if solver == "IPOPT"
-                    is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+                    is_solved = solve_SBOPi_IPOPT!(v, Λ, hl, hu, zl, zu; tol)
                 elseif solver == "PATH"
-                    is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol, max_iter)
+                    is_solved = solve_SBOPi_PATH!(v, Λ, hl, hu, zl, zu; tol)
                 end
                 push!(J2_seen_arr, copy(J[2]))
                 push!(v_seen_arr, copy(v))

@@ -37,7 +37,7 @@ xy_optimal = [0.5; 0.5]
 Ff_optimal = [0.5; 0; 1]
 
 bop, syms = construct_bop(n1, n2, F, G, f, g; verbosity=0)
-is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=false, is_always_hp=false, is_nonstrict_ok=false, max_random_restart_count=10, init_solver="PATH", solver="PATH")
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init=xy_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=false, is_always_hp=false, is_nonstrict_ok=false, max_random_restart_count=10, init_solver="PATH", solver="PATH")
 
 Ff = [bop.F(x); bop.f(x)]
 
