@@ -48,7 +48,7 @@ function run_all_BOLIB_examples(; verbosity=0, max_iter=100, do_check_x_agreem=t
         print("$(prob_count+1)\t $prob:\t ")
 
         # dry run for @elapsed...
-        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity=0, do_check_x_agreem, tol, conv_dv_len, init_solver, solver, do_force_hp_init, do_require_nonstrict_min, max_rand_restart_ct)
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=2, x_init=p.xy_init, verbosity=0, do_check_x_agreem, tol, conv_dv_len, init_solver, solver, do_force_hp_init, do_require_nonstrict_min, max_rand_restart_ct)
 
         elapsed_time = @elapsed begin
             is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, do_check_x_agreem, tol, conv_dv_len, init_solver, solver, do_force_hp_init, do_require_nonstrict_min, max_rand_restart_ct)
