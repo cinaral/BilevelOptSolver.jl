@@ -326,8 +326,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
         end
     end
 
-    x = @view v[bop.inds.v["x"]]
-    λ = @view v[bop.inds.v["λ"]]
+    x = v[bop.inds.v["x"]]
+    λ = v[bop.inds.v["λ"]]
 
     # final sanity check
     if is_sol_valid

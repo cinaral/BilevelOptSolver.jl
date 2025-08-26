@@ -12,7 +12,7 @@ function F(xyp)
     x = @view xyp[1:n1]
     y = @view xyp[n1+1:n1+n2]
     p = @view xyp[n1+n2+1:n1+n2+np]
-    y[1] - x[1] + 1.0 #p[1]
+    y[1] - x[1] + 1.0
 end
 
 function G(xy)
@@ -39,7 +39,7 @@ function g(xyp)
     #Main.@infiltrate
     [
         y[1]^2 - x[1]
-        y[1] + 1.0 #p[2]
+        y[1] + 1.0
         1.0 - y[1]
     ]
 end
@@ -54,7 +54,6 @@ x_init = [0.5; -0.5]  # leads to [1;-1] (optimal)
 bop, syms = construct_bop(n1, n2, F, G, f, g; verbosity=0, np)
 param = [1.0; 1.0]
 is_sol_valid, x, λ, iter_count, status = solve_bop(bop; param, max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, is_nonstrict_ok=false, init_solver="IPOPT", solver="IPOPT")
-#@info x
 
 Ff = [bop.F([x; param]); bop.f([x; param])]
 
