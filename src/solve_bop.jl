@@ -187,7 +187,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                 if norm_dv > conv_tol
                     has_v_changed = true
                 end
-                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol=1e3 * tol, do_require_nonstrict_min)
+                #is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol=1e3 * tol, do_require_nonstrict_min)
+                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol, do_require_nonstrict_min)
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
                 push!(v_arr, copy(v))
@@ -365,9 +366,8 @@ function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", to
         if verbosity > 0
             print("Resetting x to a bilevel feasible point using high-point relaxation...\n")
         end
-        #Main.@infiltrate
         x, is_x_feasible = solve_high_point_nlp(bop; p, x_init=[x1; x2], tol, max_iter, solver=init_solver)
-        #Main.@infiltrate
+
         x1 = @view x[bop.inds.x["x1"]]
         x2 = @view x[bop.inds.x["x2"]]
 
@@ -502,7 +502,8 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
 
     # necessary conditions
     is_stationary = all(isapprox.(∇ₓf - ∇ₓg' * λ, 0; atol=tol))
-    is_complement = all(isapprox.(g .* λ, 0; atol=tol)) # complementarity
+    #is_complement = all(isapprox.(g .* λ, 0; atol=1e1*tol)) # complementarity, the tolerance here is difficult
+    is_complement = all(isapprox.(g, 0; atol=tol) .| isapprox.(λ, 0; atol=tol))
     is_primal_feas = all(g .≥ gl .- tol)
     is_dual_feas = all(λ .≥ 0 - tol) # dual feas
     #is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas

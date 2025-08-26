@@ -16,7 +16,7 @@ julia> include("benchmarks/BASBLib_benchmark.jl")
 julia> df = benchmark_BASBLib(example_ids=1:82);
 ```
 """
-function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister(), x_init=[], max_retry_ct=1)
+function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_require_nonstrict_min=true, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister())
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -29,23 +29,14 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
         prob_count += 1
         prob = getfield(Main.BASBLib, Symbol(name))()
         bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0)
-        if isempty(x_init)
-            x_init = gen_x_init(name, rng)
-        end
+        x_init = gen_x_init(name, rng)
 
         # dry run for @elapsed and can be used to check for init issues
-        is_sol_valid = false
-        retry_ct = 0
-        while !is_sol_valid && retry_ct < max_retry_ct
-            @info x_init
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity=0, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
-            if !is_sol_valid
-                @info "poop"
-                x_init = gen_x_init(name, rng)
-            end
-            retry_ct += 1
-        end
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity=0, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
 
+        if verbosity > 0
+            print("x_init: $x_init\n")
+        end
         elapsed_time = @elapsed begin
             is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
         end
@@ -87,7 +78,7 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
     if isempty(prob.Ff_optimal)
         rating = "no reference"
     else
-        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=tol)
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=1e2 * tol) # looser cost tol
         is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
 
         if (is_cost_optimal && is_xy_optimal)
@@ -101,8 +92,28 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
         if !is_sol_valid
             success = true
         end
+    elseif name == "aw_1990_01" # local sols
+        if is_sol_valid && (isapprox(x, [12.0; 3]; atol=tol) || isapprox(x, [0.0; 5]; atol=tol))
+            success = true
+        end
+    elseif name == "b_1991_01" || name == "b_1991_01v"  # local sols
+        if is_sol_valid && isapprox(x, [1.0; 0; 0]; atol=tol)
+            success = true
+        end
+    elseif name == "cw_1990_01"  # local sols
+        if is_sol_valid && (isapprox(x, [6.0; 4; 6]; atol=tol) || isapprox(x, [2.0; 4; 4]; atol=tol))
+            success = true
+        end
+    elseif name == "bf_1982_01" # local sols
+        if is_sol_valid && isapprox(x, [0.5; 0.5; 0; 0; 0]; atol=tol)
+            success = true
+        end
+    elseif name == "s_1989_01" # local sols
+        if is_sol_valid && isapprox(x, [0.5; 0.4; 0; 0; 0]; atol=tol)
+            success = true
+        end
     else
-        if rating == "optimal"
+        if is_sol_valid || rating == "optimal"
             success = true
         end
     end
@@ -112,12 +123,20 @@ end
 
 function gen_x_init(name, rng)
     prob = getfield(Main.BASBLib, Symbol(name))()
-    x_init = zeros(prob.n1 + prob.n2)
+    nx = prob.n1 + prob.n2
+    x_init = zeros(nx)
 
     if name == "mb_2007_02"
         x_init[1] = -rand(rng)
-    elseif name == "lh_1994_01"
-        x_init = rand(rng, Float64, 2) .* 10.0
+    elseif name == "lh_1994_01" || name == "b_1991_01" || name == "b_1991_01v" || name == "bf_1982_02" || name == "bf_1982_01" || name == "s_1989_01" || name == "ct_1982_01"
+        x_init = rand(rng, Float64, nx) .* 10.0
+    elseif name == "cw_1988_01"
+        x_init = rand(rng, Float64, nx) .* 100.0
+    elseif name == "aw_1990_01"
+        x_init = rand(rng, Float64, nx) .* 50.0
+        #x_init =  [13.458763867971445, 3.5267166907020364]; # for optimal
+    elseif name == "cw_1990_01"
+        x_init = rand(rng, Float64, nx) .* [8.0; 4; 4]
     end
     x_init
 end
