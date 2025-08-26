@@ -71,6 +71,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                     print("Restarting with random init (attempt $random_restart_count)\n")
                 end
                 v[bop.inds.v["x"]] .= x_init_min .+ rand(rng, bop.nx, 1) .* (x_init_max - x_init_min)
+                #@info v
                 is_converged = false
                 is_initialized = false
                 is_prev_v_set = false

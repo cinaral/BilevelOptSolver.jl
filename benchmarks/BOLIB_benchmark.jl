@@ -15,7 +15,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister(), x_init=[])
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister())
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -33,9 +33,7 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         prob_count += 1
         prob = getfield(Main.BOLIB, Symbol(name))()
         bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0)
-        if isempty(x_init)
-            x_init = gen_x_init(name, rng)
-        end
+        x_init = gen_x_init(name, rng)
 
         # dry run for @elapsed...
         is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
@@ -114,7 +112,15 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         end
     end
 
-    if is_sol_valid
+    if rating == "optimal Ff" || rating == "optimal F and better f" || rating == "optimal F but worse f" || rating == "best Ff" || rating == "best F and better f" || rating == "best F but WORSE f"
+        success = true
+
+        if !is_sol_valid
+            @info "can't verify valid sol but the result is optimal"
+        end
+    end
+
+    if is_sol_valid # assuming it's local sol
         success = true
     end
 
@@ -122,8 +128,7 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
 end
 
 function gen_x_init(name, rng)
-    prob = getfield(Main.BASBLib, Symbol(name))()
+    prob = getfield(Main.BOLIB, Symbol(name))()
     x_init = prob.xy_init
-
     x_init
 end

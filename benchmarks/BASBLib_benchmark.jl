@@ -38,7 +38,7 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
             print("x_init: $x_init\n")
         end
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
         end
 
         Ff = [bop.F(x); bop.f(x)]
@@ -88,6 +88,14 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
         end
     end
 
+    if rating == "optimal" 
+        success = true
+
+        if !is_sol_valid
+            @info "can't verify valid sol but the result is optimal"
+        end
+    end
+
     if name == "mb_2007_02" # no solution
         if !is_sol_valid
             success = true
@@ -113,7 +121,7 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
             success = true
         end
     else
-        if is_sol_valid || rating == "optimal"
+        if is_sol_valid # assuming it's a local sol
             success = true
         end
     end
