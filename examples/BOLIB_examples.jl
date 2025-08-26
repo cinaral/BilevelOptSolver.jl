@@ -12,7 +12,7 @@ julia> include("examples/BOLIB_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="AiyoshiShimizu1984Ex2", verbosity=5);
 ```
 """
-function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5, rate_fun=rate_BOLIB_result)
+function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5)
     prob = getfield(Main.BOLIB, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
     x_init = prob.xy_init
@@ -21,13 +21,13 @@ function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5,
     end
 
     Ff = [bop.F(x); bop.f(x)]
-    rating = rate_fun(name, x, Ff; tol)
+    rating = rate_BOLIB_result(name, x, Ff; tol)
     if is_sol_valid
         info_status = "success"
     else
         info_status = "FAIL"
     end
-    info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
+    info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
 
     if verbosity > 0
         print(info)
@@ -38,49 +38,16 @@ end
 
 function rate_BOLIB_result(name, x, Ff; tol=1e-2)
     prob = getfield(Main.BOLIB, Symbol(name))()
-    is_probably_wrong = false
-    is_optimal = false
-    is_best = false
-    Ff_star = prob.Ff_optimal[1:2]
-    rating = ""
 
-    if prob.Ff_optimal[3] == 1 # star means optimal
-        if isapprox(Ff, Ff_star; atol=2 * tol)
-            is_optimal = true
-            rating = "optimal Ff"
-        elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
-            is_optimal = true
-            if Ff[2] < Ff_star[2] - tol
-                rating = "optimal F and f is somehow BETTER"
-            else
-                rating = "optimal F but f is worse"
-            end
-        elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
-            is_probably_wrong = true
-            rating = "better than optimal?!"
-        else
-            rating = "SUBOPTIMAL Ff"
-        end
-    elseif prob.Ff_optimal[3] == 2 # star means best
-        if isapprox(Ff, Ff_star; atol=2 * tol)
-            is_best = true
-            rating = "best known Ff"
-        elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
-            is_best = true
-            if Ff[2] < Ff_star[2] - tol
-                rating = "best known F and f is somehow BETTER"
-            else
-                rating = "best known F but f is worse"
-            end
-        elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
-            is_best = true
-            is_probably_wrong = true
-            rating = "better than best known Ff"
-        else
-            rating = "WORSE than best known Ff"
-        end
+    if prob.Ff_optimal[3] == 0 # star means optimal
+        rating = "no reference"
     else
-        rating = "no reference solution"
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal[1:2]; atol=tol)
+        if is_cost_optimal
+            return "optimal"
+        else
+            return "NOT optimal"
+        end
     end
     rating
 end

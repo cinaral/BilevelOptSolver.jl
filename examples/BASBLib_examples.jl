@@ -14,7 +14,7 @@ julia> include("examples/BASBLib_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="as_2013_01", verbosity=5);
 ```
 """
-function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5, rate_fun=rate_BASBLib_result)
+function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5)
     prob = getfield(Main.BASBLib, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
     x_init = zeros(bop.nx)
@@ -23,13 +23,13 @@ function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5, rate_fun
     end
 
     Ff = [bop.F(x); bop.f(x)]
-    rating = rate_fun(name, x, Ff; tol)
+    rating = rate_BASBLib_result(name, x, Ff; tol)
     if is_sol_valid
         info_status = "success"
     else
         info_status = "FAIL"
     end
-    info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)) Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
+    info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
 
     if verbosity > 0
         print(info)
@@ -40,13 +40,17 @@ end
 
 function rate_BASBLib_result(name, x, Ff; tol=1e-7)
     prob = getfield(Main.BASBLib, Symbol(name))()
-    is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=tol)
-    is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
-
-    if (is_cost_optimal && is_xy_optimal)
-        return "optimal"
+    if isempty(prob.Ff_optimal)
+        return "no sol"
     else
-        return "NOT optimal"
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=tol)
+        is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
+
+        if (is_cost_optimal && is_xy_optimal)
+            return "optimal"
+        else
+            return "NOT optimal"
+        end
     end
 end
 

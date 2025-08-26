@@ -6,12 +6,10 @@ convex f
 
 n1::Int64 = 1
 n2::Int64 = 1
-np::Int64 = 0
 
-function F(xyp)
-    x = @view xyp[1:n1]
-    y = @view xyp[n1+1:n1+n2]
-    p = @view xyp[n1+n2+1:n1+n2+np]
+function F(xy)
+    x = @view xy[1:n1]
+    y = @view xy[n1+1:n1+n2]
     y[1] - x[1] + 1.0
 end
 
@@ -32,11 +30,9 @@ function f(xy)
     y[1]^2
 end
 
-function g(xyp)
-    x = @view xyp[1:n1]
-    y = @view xyp[n1+1:n1+n2]
-    p = @view xyp[n1+n2+1:n1+n2+np]
-    #Main.@infiltrate
+function g(xy)
+    x = @view xy[1:n1]
+    y = @view xy[n1+1:n1+n2]
     [
         y[1]^2 - x[1]
         y[1] + 1.0
@@ -51,9 +47,9 @@ x_init = [0.5; -0.5]  # leads to [1;-1] (optimal)
 #x_init = [-.5; -.5]  # leads to [0;0] (feasible)
 #x_init = [.5; .5]  # leads to [0.25;0.5] (feasible)
 #x_init = [-.5; .5]  # leads to [0.;0.] (feasible)
-bop, syms = construct_bop(n1, n2, F, G, f, g; verbosity=0, np)
+bop, syms = construct_bop(n1, n2, F, G, f, g; verbosity=0)
 param = [1.0; 1.0]
-is_sol_valid, x, λ, iter_count, status = solve_bop(bop; param, max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, is_checking_x_agree=true, is_always_hp=false, is_nonstrict_ok=false, init_solver="IPOPT", solver="IPOPT")
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, do_require_nonstrict_min=false, max_rand_restart_ct=50, init_solver="IPOPT", solver="IPOPT")
 
 Ff = [bop.F([x; param]); bop.f([x; param])]
 
@@ -62,4 +58,4 @@ if is_sol_valid
 else
     print("FAIL ")
 end
-print("($status), $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(xy_optimal, sigdigits=5)) Ff* = $(round.(Ff_optimal, sigdigits=5)))\n\n")
+print("($status), $iter_count iters,\t", "x = $(round.(x, sigdigits=5)) -> Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(xy_optimal, sigdigits=5)) Ff* = $(round.(Ff_optimal, sigdigits=5)))\n")

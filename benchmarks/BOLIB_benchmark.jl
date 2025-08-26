@@ -1,149 +1,111 @@
-include("../examples/BOLIB_examples.jl")
-
+if !haskey(ENV, "BOLIB_PATH")
+    error("You need to obtain [BOLIB.jl](https://github.com/cinaral/BOLIB.jl) (converted from [BOLIBver2](https://biopt.github.io/bolib/)) and set BOLIB_PATH environment variable to run this benchmark.\n")
+end
+Pkg.develop(path=ENV["BOLIB_PATH"])
+import BOLIB
+using BilevelOptSolver
 using DataFrames
+using Statistics
 
-function run_all_BOLIB_examples(; verbosity=0, max_iter=100, do_check_x_agreem=true, init_solver="PATH", solver="PATH", tol=1e-7, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=true,max_rand_restart_ct=10)
-    prob_count = 0
-    success_count = 0
-    optimalish_count = 0
-    suboptimalish_count = 0
-    ps = []
-    bops = []
-    prob_names = []
-    x_out_arr = Vector{Float64}[]
-    status_arr = []
+"""
+Usage:
+```
+julia> include("benchmarks/BOLIB_benchmark.jl")
+julia> df = benchmark_BOLIB(example_ids=1:165);
+```
+"""
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50)
+    dataframes = []
     success_arr = Bool[]
-    iter_counts = Int64[]
     elapsed_arr = Float64[]
-    ratings = []
-    n1_arr = Int64[]
-    n2_arr = Int64[]
-    m1_arr = Int64[]
-    m2_arr = Int64[]
-    x_init_arr = Vector{Float64}[]
-    Ff_star_arr = Vector{Float64}[]
-    Ff_out_arr = Vector{Float64}[]
 
-    for prob in BOLIB.examples
-        if "SinhaMaloDeb2014TP9" == prob || "SinhaMaloDeb2014TP10" == prob
-            # these fail to compile for some reason so we skip
-            continue
-        end
-        #if "Bard1988Ex1" != prob
-        #    continue
-        #end
+    for id in example_ids
+        name = BOLIB.examples[id]
+        print("$id $name\n")
 
-        p = getfield(Main.BOLIB, Symbol(prob))()
-
-        bop, _ = construct_bop(p.n1, p.n2, p.F, p.G, p.f, p.g, verbosity=0)
-        # print iter info
-        if prob_count % 20 == 0
-            print("id name: success (status), iters (elapsed s): success, rating, x -> Ff (Ff*), result\n")
-        end
-        print("$(prob_count+1)\t $prob:\t ")
+        prob = getfield(Main.BOLIB, Symbol(name))()
+        bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0)
+        x_init = prob.xy_init
 
         # dry run for @elapsed...
-        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=2, x_init=p.xy_init, verbosity=0, do_check_x_agreem, tol, conv_dv_len, init_solver, solver, do_force_hp_init, do_require_nonstrict_min, max_rand_restart_ct)
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
 
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter, x_init=p.xy_init, verbosity, do_check_x_agreem, tol, conv_dv_len, init_solver, solver, do_force_hp_init, do_require_nonstrict_min, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
         end
 
-        is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong = rate_BOLIB_result(p, bop, x)
+        Ff = [bop.F(x); bop.f(x)]
+        success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
 
         if is_sol_valid
-            print("success ")
-            if is_probably_wrong
-                print("(!) ")
-            end
-            success_count += 1
-
-            if is_optimal || is_best
-                optimalish_count += 1
-            else
-                suboptimalish_count += 1
-            end
+            info_status = "success"
         else
-            print("FAIL ")
+            info_status = "FAIL"
         end
-        print("($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s):\t" * rating * ",\t $(round.(x, sigdigits=5)) -> $(round.(Ff, sigdigits=5)) ($(round.(Ff_star, sigdigits=5)))\n")
-        push!(ps, p)
-        push!(bops, bop)
-        push!(prob_names, prob)
-        push!(n1_arr, bop.n1)
-        push!(n2_arr, bop.n2)
-        push!(m1_arr, bop.m1)
-        push!(m2_arr, bop.m2)
-        push!(x_init_arr, p.xy_init)
-        push!(iter_counts, iter_count)
-        push!(elapsed_arr, elapsed_time)
-        push!(status_arr, status)
-        push!(x_out_arr, x)
-        push!(Ff_out_arr, Ff)
-        push!(Ff_star_arr, Ff_star)
-        push!(ratings, rating)
-        push!(success_arr, is_sol_valid)
+        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
 
-        prob_count += 1
+        if verbosity > 0
+            print(info)
+        end
+
+        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Success" => success, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "Rating" => rating, "is_sol_valid" => is_sol_valid, "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+        push!(success_arr, success)
+        push!(elapsed_arr, elapsed_time)
     end
 
-    df = DataFrame("name" => prob_names, "n1" => n1_arr, "n2" => n2_arr, "m1" => m1_arr, "m2" => m2_arr, "Status" => status_arr, "Success" => success_arr, "Rating" => ratings, "Iterations" => iter_counts, "Solve time (s)" => round.(elapsed_arr, sigdigits=3), "x" => map((x) -> round.(x, sigdigits=3), x_out_arr), "Ff" => map((Ff) -> round.(Ff, sigdigits=3), Ff_out_arr), "x_init" => map((x) -> round.(x, sigdigits=3), x_init_arr), "Ff*" => map((Ff) -> round.(Ff, sigdigits=3), Ff_star_arr))
-
     success_elapsed_arr = elapsed_arr[success_arr]
+    success_count = length(findall(success_arr))
+    prob_count = length(example_ids)
 
     print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
-    print("Out of successful solutions: $(optimalish_count) ($(round(optimalish_count/success_count*100,sigdigits=3))%) were optimal or best known, while $(suboptimalish_count) ($(round(suboptimalish_count/success_count*100,sigdigits=3))%) were suboptimal or worse than best known.\n")
     print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
     print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
 
-    (; prob_count, success_arr, success_count, optimalish_count, suboptimalish_count, ps, bops, x_out_arr, iter_counts, elapsed_arr, status_arr, df)
+    vcat(dataframes...)
 end
 
-function rate_BOLIB_result(BOLIB, bop, x; tol=1e-2)
-    is_probably_wrong = false
-    is_optimal = false
-    is_best = false
-    Ff = [bop.F(x); bop.f(x)]
-    Ff_star = BOLIB.Ff_optimal[1:2]
+function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
+    prob = getfield(Main.BOLIB, Symbol(name))()
+    Ff_optimal = prob.Ff_optimal[1:2]
+    success = false
     rating = ""
+    x_optimal = []
 
-    if BOLIB.Ff_optimal[3] == 1 # star means optimal
-        if isapprox(Ff, Ff_star; atol=2 * tol)
-            is_optimal = true
+    if prob.Ff_optimal[3] == 0 # star means optimal
+        rating = "no reference"
+    elseif prob.Ff_optimal[3] == 1 # star means optimal
+        if isapprox(Ff, Ff_optimal; atol=2 * tol)
             rating = "optimal Ff"
-        elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
-            is_optimal = true
-            if Ff[2] < Ff_star[2] - tol
-                rating = "optimal F and f is somehow BETTER"
+        elseif isapprox(Ff[1], Ff_optimal[1]; atol=2 * tol)
+            if Ff[2] < Ff_optimal[2] - tol
+                rating = "optimal F and better f"
             else
-                rating = "optimal F but f is worse"
+                rating = "optimal F but worse f"
             end
-        elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
-            is_probably_wrong = true
-            rating = "better than optimal?!"
+        elseif Ff[1] < Ff_optimal[1] - tol || (isapprox(Ff[1], Ff_optimal[1]; atol=2 * tol) && Ff[2] < Ff_optimal[2] - tol)
+            rating = "better F"
         else
             rating = "SUBOPTIMAL Ff"
         end
-    elseif BOLIB.Ff_optimal[3] == 2 # star means best
-        if isapprox(Ff, Ff_star; atol=2 * tol)
-            is_best = true
-            rating = "best known Ff"
-        elseif isapprox(Ff[1], Ff_star[1]; atol=2 * tol)
-            is_best = true
-            if Ff[2] < Ff_star[2] - tol
-                rating = "best known F and f is somehow BETTER"
+    elseif prob.Ff_optimal[3] == 2 # star means best
+        if isapprox(Ff, Ff_optimal; atol=2 * tol)
+            rating = "best Ff"
+        elseif isapprox(Ff[1], Ff_optimal[1]; atol=2 * tol)
+            if Ff[2] < Ff_optimal[2] - tol
+                rating = "best F and better f"
             else
-                rating = "best known F but f is worse"
+                rating = "best F but WORSE f"
             end
-        elseif Ff[1] < Ff_star[1] - tol || (isapprox(Ff[1], Ff_star[1]; atol=2 * tol) && Ff[2] < Ff_star[2] - tol)
-            is_best = true
-            is_probably_wrong = true
-            rating = "better than best known Ff"
+        elseif Ff[1] < Ff_optimal[1] - tol || (isapprox(Ff[1], Ff_optimal[1]; atol=2 * tol) && Ff[2] < Ff_optimal[2] - tol)
+            rating = "better than best Ff"
         else
-            rating = "WORSE than best known Ff"
+            rating = "WORSE than best Ff"
         end
-    else
-        rating = "no reference solution"
     end
-    is_optimal, is_best, Ff, Ff_star, rating, is_probably_wrong
+
+    if is_sol_valid
+        success = true
+    end
+
+    (; success, rating, x_optimal)
 end
