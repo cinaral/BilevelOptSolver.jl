@@ -6,6 +6,7 @@ import BOLIB
 using BilevelOptSolver
 using DataFrames
 using Statistics
+using Random
 
 """
 Usage:
@@ -14,7 +15,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50)
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister(), x_init=[])
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -32,7 +33,9 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         prob_count += 1
         prob = getfield(Main.BOLIB, Symbol(name))()
         bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0)
-        x_init = prob.xy_init
+        if isempty(x_init)
+            x_init = gen_x_init(name, rng)
+        end
 
         # dry run for @elapsed...
         is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
@@ -49,7 +52,7 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         else
             info_status = "FAIL"
         end
-        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(x_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
+        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(x_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
 
         if verbosity > 0
             print(info)
@@ -65,7 +68,9 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
 
     print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
     print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
-    print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
+    if !isempty(success_elapsed_arr)
+        print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
+    end
 
     vcat(dataframes...)
 end
@@ -114,4 +119,11 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
     end
 
     (; success, rating, x_optimal)
+end
+
+function gen_x_init(name, rng)
+    prob = getfield(Main.BASBLib, Symbol(name))()
+    x_init = prob.xy_init
+
+    x_init
 end
