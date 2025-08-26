@@ -19,11 +19,13 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
+    prob_count = 0
 
     for id in example_ids
         name = BASBLib.examples[id]
         print("$id $name\n")
 
+        prob_count += 1
         prob = getfield(Main.BASBLib, Symbol(name))()
         bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0)
         x_init = zeros(bop.nx)
@@ -48,14 +50,13 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
             print(info)
         end
 
-        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Success" => success, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "Rating" => rating, "is_sol_valid" => is_sol_valid, "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Success" => success, "is_sol_valid" => is_sol_valid, "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(prob.xy_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
         push!(success_arr, success)
         push!(elapsed_arr, elapsed_time)
     end
 
     success_elapsed_arr = elapsed_arr[success_arr]
     success_count = length(findall(success_arr))
-    prob_count = length(example_ids)
 
     print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
     print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")

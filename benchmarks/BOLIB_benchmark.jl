@@ -18,11 +18,18 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
+    prob_count = 0
 
     for id in example_ids
         name = BOLIB.examples[id]
         print("$id $name\n")
 
+        if "SinhaMaloDeb2014TP9" == name || "SinhaMaloDeb2014TP10" == name
+            # these fail to compile for some reason so we skip
+            continue
+        end
+
+        prob_count += 1
         prob = getfield(Main.BOLIB, Symbol(name))()
         bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0)
         x_init = prob.xy_init
@@ -42,20 +49,19 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         else
             info_status = "FAIL"
         end
-        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
+        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(x_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))"
 
         if verbosity > 0
             print(info)
         end
 
-        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Success" => success, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "Rating" => rating, "is_sol_valid" => is_sol_valid, "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Success" => success, "is_sol_valid" => is_sol_valid, "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
         push!(success_arr, success)
         push!(elapsed_arr, elapsed_time)
     end
 
     success_elapsed_arr = elapsed_arr[success_arr]
     success_count = length(findall(success_arr))
-    prob_count = length(example_ids)
 
     print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
     print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
