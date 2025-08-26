@@ -1,50 +1,12 @@
-# https://biopt.github.io/bolib/
-using BilevelOptSolver
+
+if !haskey(ENV, "BOLIB_PATH")
+    error("You need to obtain [BOLIB.jl](https://github.com/cinaral/BOLIB.jl) (converted from [BOLIBver2](https://biopt.github.io/bolib/)) and set BOLIB_PATH environment variable to run this example.\n")
+end
+Pkg.develop(path=ENV["BOLIB_PATH"])
+import BOLIB
 include("../src/BOLIB_utils.jl")
-using BenchmarkTools
-using ProfileView
-# Change this to any BOLIB example, e.g.: AllendeStill2013, AnEtal2009, Bard1988Ex2, LamparielloSagratella2017Ex23, Zlobec2001b, AiyoshiShimizu1984Ex2, Colson2002BIPA1
+using BilevelOptSolver
 
-# Dimensions 𝑛𝑥, 𝑛𝑦, 𝑛𝐺 or 𝑛𝑔 of examples RobustPortfolioP1, RobustPortfolioP2 can be altered to get problems of different sizes, as necessary
-"""
-Interesting ones (F fails, B better than optimal)
----
-AnEtal2009 F
-
-DempeDutta2012Ex24 F
-DempeDutta2012Ex31 F
-FalkLiu1995 B
-GumusFloudas2001Ex1 F
-HenrionSurowiec2011 F
-KleniatiAdjiman2014Ex3 B
-LamparielloSagratella2017Ex32 F
-LuDebSinha2016f F
-MacalHurter1997 F
-MitsosBarton2006Ex38 F
-MitsosBarton2006Ex39 F
-MitsosBarton2006Ex314 B
-MitsosBarton2006Ex315 B
-MitsosBarton2006Ex318 F 
-MitsosBarton2006Ex320 B
-MitsosBarton2006Ex321 F
-MitsosBarton2006Ex324 F
-MitsosBarton2006Ex327 B
-NieWangYe2017Ex34 F
-Outrata1990Ex1e B
-Outrata1990Ex2d B
-ShimizuEtal1997b F
-WanWangLv2011 B
-YeZhu2010Ex42 F
-Zlobec2001b F (no solution exists)
-DesignCentringP2 F
-NetworkDesignP1 F
-NetworkDesignP2 F
-RobustPortfolioP2 F
-TuyEtal2007Ex3 F
-MitsosBarton2006Ex32 F (no solution exists)
-MitsosBarton2006Ex35 B
-MitsosBarton2006Ex36 F
-"""
 b = BOLIB.MitsosBarton2006Ex38()
 
 bop, syms = construct_bop(b.n1, b.n2, b.F, b.G, b.f, b.g; verbosity=0, np=0)
