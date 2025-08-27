@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_require_nonstrict_min=true, do_check_x_agreem=true, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx),)
+function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_require_strict_min=true, do_check_x_agreem=true, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx),)
 
     @assert length(x_init) >= bop.nx "Wrong x_init length!"
 
@@ -188,8 +188,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                 if norm_dv > conv_tol
                     has_v_changed = true
                 end
-                #is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol=1e3 * tol, do_require_nonstrict_min)
-                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol, do_require_nonstrict_min)
+
+                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol, do_require_strict_min)
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
                 push!(v_arr, copy(v))
@@ -465,12 +465,12 @@ function solve_high_point_nlp(bop; x_init=zeros(bop.hp_nlp.n), p=Float64[], tol=
     (; x, success)
 end
 
-function check_follower_sol(v, bop; p=Float64[], tol=1e-5, do_require_nonstrict_min=true)
+function check_follower_sol(v, bop; p=Float64[], tol=1e-5, do_require_strict_min=true)
     x = @view v[bop.inds.v["x"]]
     λ = @view v[bop.inds.v["λ"]]
     nlp = bop.fol_nlp
 
-    check_nlp_sol(x, λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; p, tol, do_require_nonstrict_min)
+    check_nlp_sol(x, λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; p, tol, do_require_strict_min)
 end
 
 function check_sbop_sol(v, Λ, bop, hl, hu, zl, zu; p=Float64[], tol=1e-5)
@@ -487,10 +487,7 @@ end
 """
 n_actual refers to part of v that corresponds to x1 and x2, and without the λ part which always violates SC 
 """
-function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; p=Float64[], tol=1e-5, do_require_nonstrict_min=true)
-    #@assert(n == length(x))
-    #@assert(m == length(λ))
-    #@assert(m == length(gl))
+function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; p=Float64[], tol=1e-5, do_require_strict_min=true)
 
     g = zeros(m)
     ∇ₓf = zeros(n)
@@ -531,7 +528,6 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         C = Matrix(∇ₓg[active_js, :])
         _, _, V = svd(C; full=true)
         r = rank(C)
-        # 2025-08-04 TODO: what about when nullspace is just zero
         if n - r > 0
             Z = V[:, n-r+1:n]
             min_eig = eigmin(Z' * ∇²ₓL * Z)
@@ -544,9 +540,9 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         if min_eig ≥ tol # SOSC
             is_sufficient = true # strict minimum
         elseif isapprox(min_eig, 0; atol=tol)
-            if do_require_nonstrict_min # SOSC
+            if do_require_strict_min # SOSC
                 is_sufficient = false
-            else  # SONC
+            else # SONC
                 is_sufficient = true
             end
         end

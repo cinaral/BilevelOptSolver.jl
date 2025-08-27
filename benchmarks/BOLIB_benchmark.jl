@@ -15,7 +15,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_nonstrict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister())
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister(), do_force_dry_run=false)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -36,10 +36,12 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         x_init = gen_x_init(name, rng)
 
         # dry run for @elapsed...
-        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
+        if do_force_dry_run
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
+        end
 
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_nonstrict_min, do_check_x_agreem, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
         end
 
         Ff = [bop.F(x); bop.f(x)]
@@ -70,7 +72,23 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
     end
 
-    vcat(dataframes...)
+    df = vcat(dataframes...)
+    date_time = Dates.format(now(), "yyyy-mm-dd_HHMM")
+    df = hcat(df,
+        DataFrame("Date Time:" => [
+            date_time; fill("", length(df[!, 1]) - 1)]),
+        DataFrame("Success Count:" => [
+            success_count; fill("", length(df[!, 1]) - 1)]),
+        DataFrame("All elapsed median (s):" => [median(elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("All elapsed mean (s):" => [mean(elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("All elapsed min (s):" => [minimum(elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("All elapsed max (s):" => [maximum(elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("Success elapsed median (s):" => [median(success_elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("Success elapsed mean (s):" => [mean(success_elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("Success elapsed min (s):" => [minimum(success_elapsed_arr); fill("", length(df[!, 1]) - 1)]),
+        DataFrame("Success elapsed max (s):" => [maximum(success_elapsed_arr); fill("", length(df[!, 1]) - 1)])
+    )
+    df
 end
 
 function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)

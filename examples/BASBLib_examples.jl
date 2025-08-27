@@ -19,7 +19,7 @@ function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5)
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
     x_init = zeros(bop.nx)
     elapsed_time = @elapsed begin
-        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, do_require_nonstrict_min=false, max_rand_restart_ct=50, init_solver="IPOPT", solver="IPOPT")
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, do_require_strict_min=false, max_rand_restart_ct=50, init_solver="IPOPT", solver="IPOPT")
     end
 
     Ff = [bop.F(x); bop.f(x)]
