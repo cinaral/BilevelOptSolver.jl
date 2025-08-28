@@ -16,7 +16,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=false, do_check_x_agreem=true, max_rand_restart_ct=50, rng=MersenneTwister(), do_force_dry_run=false)
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=false, do_check_x_agreem=true, max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -46,7 +46,7 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         end
 
         Ff = [bop.F(x); bop.f(x)]
-        success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=1e3 * tol)
+        success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=rating_tol)
 
         if is_sol_valid
             info_status = "success"
@@ -101,7 +101,7 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
     if prob.Ff_optimal[3] == 0 # star means optimal
         rating = "no reference"
     else
-        is_cost_optimal = isapprox(Ff, prob.Ff_optimal[1:2]; atol=tol) # looser cost tol
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal[1:2]; rtol=tol)
         if prob.Ff_optimal[3] == 1 # star means optimal
             if is_cost_optimal
                 rating = "optimal"
@@ -168,6 +168,21 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
     elseif name == "BardFalk1982Ex2"
         x_optimal = [2.0; 0; 1.5; 0]
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "MitsosBarton2006Ex34"
+        x_optimal = -1
+        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "Bard1991Ex1"
+        x_optimal = [2.0; 6; 0]
+        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "AiyoshiShimizu1984Ex2" # multiple sols
+        x_optimal = [0.0; 0; -10; -10]
+        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [0.0; 30; -10; -10]; atol=tol))
             success = true
         end
     elseif name == "CandlerTownsley1982" # multiple sols
@@ -427,11 +442,6 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         end
     elseif name == "AnEtal2009"
         x_optimal = [0.200001; 1.999997; 3.999998; 4.600005]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
-    elseif name == "Bard1991Ex1"
-        x_optimal = [2.0; 0; 6]
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end

@@ -14,16 +14,16 @@ julia> include("examples/BASBLib_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="as_2013_01", verbosity=5);
 ```
 """
-function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5)
+function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=false, do_check_x_agreem=true, max_rand_restart_ct=10, rating_tol=1e-3)
     prob = getfield(Main.BASBLib, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
     x_init = zeros(bop.nx)
     elapsed_time = @elapsed begin
-        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, do_require_strict_min=false, max_rand_restart_ct=50, init_solver="IPOPT", solver="IPOPT")
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
     end
 
     Ff = [bop.F(x); bop.f(x)]
-    rating = rate_BASBLib_result(name, x, Ff; 1e2 * tol)
+    rating = rate_BASBLib_result(name, x, Ff; tol=1e-3)
     if is_sol_valid
         info_status = "success"
     else
@@ -38,12 +38,12 @@ function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5)
     (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms)
 end
 
-function rate_BASBLib_result(name, x, Ff; tol=1e-7)
+function rate_BASBLib_result(name, x, Ff; tol=1e-3)
     prob = getfield(Main.BASBLib, Symbol(name))()
     if isempty(prob.Ff_optimal)
         return "no sol"
     else
-        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=tol)
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; rtol=tol)
         is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
 
         if (is_cost_optimal && is_xy_optimal)

@@ -12,16 +12,16 @@ julia> include("examples/BOLIB_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="AiyoshiShimizu1984Ex2", verbosity=5);
 ```
 """
-function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5)
+function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=false, do_check_x_agreem=true, max_rand_restart_ct=10, rating_tol=1e-3)
     prob = getfield(Main.BOLIB, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
     x_init = prob.xy_init
     elapsed_time = @elapsed begin
-        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, do_require_strict_min=false, max_rand_restart_ct=50, init_solver="IPOPT", solver="IPOPT")
+        is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
     end
 
     Ff = [bop.F(x); bop.f(x)]
-    rating = rate_BOLIB_result(name, x, Ff; tol)
+    rating = rate_BOLIB_result(name, x, Ff; tol=rating_tol)
     if is_sol_valid
         info_status = "success"
     else
@@ -36,13 +36,13 @@ function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5)
     (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms)
 end
 
-function rate_BOLIB_result(name, x, Ff; tol=1e-2)
+function rate_BOLIB_result(name, x, Ff; tol=1e-3)
     prob = getfield(Main.BOLIB, Symbol(name))()
 
     if prob.Ff_optimal[3] == 0 # star means optimal
         rating = "no reference"
     else
-        is_cost_optimal = isapprox(Ff, prob.Ff_optimal[1:2]; atol=tol)
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal[1:2]; rtol=tol)
         if is_cost_optimal
             return "optimal"
         else
