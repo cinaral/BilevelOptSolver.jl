@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_require_strict_min=true, do_check_x_agreem=true, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx),)
+function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx),)
 
     @assert length(x_init) >= bop.nx "Wrong x_init length!"
 
@@ -113,7 +113,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
 
         # compute feasible sets
         # by this point, v must at least satisfy the follower's problem
-        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; p, tol=fol_feas_set_tol, verbosity)
+        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; p, tol=fol_feas_set_tol, verbosity, do_force_toggle)
         if length(follow_feas_Js) == 0
             if verbosity > 1
                 print("Failed to compute follower feasible index sets: Not a valid solution! Maybe it's a tolerance issue?\n")
@@ -133,7 +133,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                 if verbosity > 1
                     print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
                 end
-                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol)
+                follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, do_force_toggle)
                 tol_restart_count += 1
             end
         end
@@ -251,7 +251,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
         is_sol_valid = false
         is_all_solved = length(v_arr) == n_J
         if is_all_solved
-            if verbosity > 0
+            if verbosity > 1
                 print("All SBOPi ($n_J) solved.\n")
             end
         end
@@ -364,7 +364,7 @@ function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", to
 
     # if failure it may be that the feasible region of the follower is empty for x₁
     if !success
-        if verbosity > 0
+        if verbosity > 1
             print("Resetting x to a bilevel feasible point using high-point relaxation...\n")
         end
         x, is_x_feasible = solve_high_point_nlp(bop; p, x_init=[x1; x2], tol, max_iter, solver=init_solver)
@@ -376,7 +376,7 @@ function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", to
             v[bop.inds.v["x1"]] .= x1
             (; x2, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, p)
         else
-            if verbosity > 0
+            if verbosity > 1
                 print("Failed resetting x to a bilevel feasible point, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
             end
         end
@@ -567,7 +567,7 @@ K[j] =  { j: hⱼ = 0, l < z < u} case 2  : hⱼ active (l ≠ u)
 
 Then we sort out ambiguities by enumerating and collect them in J[1], J[2], J[3] and J[4]
 """
-function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3)
+function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3, do_force_toggle=false)
     @assert(n == length(h))
     @assert(n == length(z))
     @assert(n == length(zl))
@@ -587,6 +587,11 @@ function check_mcp_sol(bop, n, h, z, zl, zu; tol=1e-3)
             push!(Kj, 2) # case 2
         elseif -tol < h[j] < tol && zl[j] + tol ≤ z[j] ≤ zu[j] - tol
             push!(Kj, 2) # case 2
+            if do_force_toggle # Always also consider active constraints inactive
+                if j > bop.n2
+                    push!(Kj, 1) 
+                end
+            end
         elseif -tol < h[j] < tol && zu[j] - tol < z[j]
             push!(Kj, 2) # case 2 OR 
             push!(Kj, 3) # case 3
@@ -602,12 +607,12 @@ end
 
 # for the follower's problem
 # check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!)
-function compute_follow_feas_ind_sets(bop, v; p=Float64[], tol=1e-3, verbosity=0)
+function compute_follow_feas_ind_sets(bop, v; p=Float64[], tol=1e-3, verbosity=0, do_force_toggle=false)
     Js = Vector{Dict{Int,Set{Int}}}()
     h = zeros(bop.nz)
     bop.fol_mcp.h!(h, [v; p])
     z = @view v[bop.inds.v["z"]]
-    is_valid, K = check_mcp_sol(bop, bop.nz, h, z, bop.fol_mcp.zl, bop.fol_mcp.zu; tol)
+    is_valid, K = check_mcp_sol(bop, bop.nz, h, z, bop.fol_mcp.zl, bop.fol_mcp.zu; tol, do_force_toggle)
 
     if !is_valid
         return Js

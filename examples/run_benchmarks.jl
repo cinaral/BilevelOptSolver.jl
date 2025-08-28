@@ -10,10 +10,10 @@ using CSV
 #CSV.write("BASBLib_results_path.csv", res)
 
 include("../benchmarks/BOLIB_benchmark.jl")
-res = benchmark_BOLIB(; example_ids=[1;6], do_require_strict_min=false, init_solver="IPOPT", solver="IPOPT", do_force_dry_run=true);
+#res = benchmark_BOLIB(; do_require_strict_min=false, init_solver="IPOPT", solver="IPOPT", do_force_dry_run=true);
 #CSV.write("BOLIB_results_nonstrict.csv", res)
-#res = benchmark_BOLIB(; do_require_strict_min=true, init_solver="IPOPT", solver="IPOPT");
-#CSV.write("BOLIB_results.csv", res)
+res = benchmark_BOLIB(; do_require_strict_min=true, init_solver="IPOPT", solver="IPOPT");
+CSV.write("BOLIB_results.csv", res)
 #res = benchmark_BOLIB(; do_require_strict_min=false, init_solver="PATH", solver="PATH", do_force_dry_run=true);
 #CSV.write("BOLIB_results_path_nonstrict.csv", res)
 #res = benchmark_BOLIB(; do_require_strict_min=true, init_solver="PATH", solver="PATH");

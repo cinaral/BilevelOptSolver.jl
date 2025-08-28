@@ -16,7 +16,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=false, do_check_x_agreem=true, max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true,  do_force_toggle=false,  max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -38,17 +38,17 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
 
         # dry run for @elapsed...
         if do_force_dry_run
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct)
         end
 
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct)
         end
 
         Ff = [bop.F(x); bop.f(x)]
         success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=rating_tol)
 
-        if is_sol_valid
+        if success
             info_status = "success"
         else
             info_status = "FAIL"

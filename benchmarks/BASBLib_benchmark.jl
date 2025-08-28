@@ -17,7 +17,7 @@ julia> include("benchmarks/BASBLib_benchmark.jl")
 julia> df = benchmark_BASBLib(example_ids=1:82);
 ```
 """
-function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
+function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true,  do_force_toggle=false, max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -34,30 +34,31 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
 
         # dry run for @elapsed and can be used to check for init issues
         if do_force_dry_run
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity=0, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity=0, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct)
         end
 
         if verbosity > 0
             print("x_init: $x_init\n")
         end
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
+            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
         end
 
         Ff = [bop.F(x); bop.f(x)]
         success, rating = rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=rating_tol)
-        if is_sol_valid
+        if success
             info_status = "success"
         else
             info_status = "FAIL"
         end
-        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
+        info = "$success: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
 
         if verbosity > 0
             print(info)
         end
 
         dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Success" => success, "is_sol_valid" => is_sol_valid, "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(prob.xy_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+        Main.@infiltrate
         push!(success_arr, success)
         push!(elapsed_arr, elapsed_time)
     end
