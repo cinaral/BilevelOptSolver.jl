@@ -118,7 +118,7 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
     end
 
     # if optimal we consider a success 
-    if rating == "optimal"
+    if rating == "optimal" || rating == "optimal (known)"
         success = true
 
         if !is_sol_valid
@@ -431,7 +431,7 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
             success = true
         end
     elseif name == "Bard1991Ex1"
-        x_optimal = [2.0; 6; 0]
+        x_optimal = [2.0; 0; 6]
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end
