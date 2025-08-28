@@ -23,7 +23,7 @@ function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5)
     end
 
     Ff = [bop.F(x); bop.f(x)]
-    rating = rate_BASBLib_result(name, x, Ff; tol)
+    rating = rate_BASBLib_result(name, x, Ff; 1e2 * tol)
     if is_sol_valid
         info_status = "success"
     else

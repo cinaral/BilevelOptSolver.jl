@@ -108,14 +108,16 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
         end
     end
 
+    # if optimal we consider a success 
     if rating == "optimal"
         success = true
 
         if !is_sol_valid
-            @info "can't verify valid sol but the result is optimal"
+            @info "couldn't verify valid sol but the result is optimal"
         end
     end
 
+    # default behavior is success = is_sol_valid, but otherwise we compare to known local sols
     if name == "mb_2007_02" # no solution
         if !is_sol_valid
             success = true
