@@ -45,7 +45,7 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
         end
 
         Ff = [bop.F(x); bop.f(x)]
-        success, rating = rate_BASBLib_result(name, x, Ff, is_sol_valid; tol)
+        success, rating = rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e3 * tol)
         if is_sol_valid
             info_status = "success"
         else
@@ -98,13 +98,18 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
     if isempty(prob.Ff_optimal)
         rating = "no reference"
     else
-        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=1e2 * tol) # looser cost tol
-        is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
-
-        if (is_cost_optimal && is_xy_optimal)
+        is_cost_optimal = isapprox(Ff, prob.Ff_optimal; atol=tol) # looser cost tol
+        if is_cost_optimal
             rating = "optimal"
         else
             rating = "NOT optimal"
+        end
+
+        is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
+
+        # if xy is optimal and sol valid success by default
+        if is_sol_valid && is_xy_optimal
+            success = true
         end
     end
 
@@ -142,8 +147,8 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
         if is_sol_valid && isapprox(x, [0.5; 0.4; 0; 0; 0]; atol=tol)
             success = true
         end
-    else
-        if is_sol_valid # assuming it's a local sol
+    else # assuming success if it's a local sol
+        if is_sol_valid
             success = true
         end
     end

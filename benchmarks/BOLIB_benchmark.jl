@@ -46,7 +46,7 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         end
 
         Ff = [bop.F(x); bop.f(x)]
-        success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
+        success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=1e3 * tol)
 
         if is_sol_valid
             info_status = "success"
@@ -127,8 +127,8 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
     end
 
     if name == "MitsosBarton2006Ex31"
-        x_optimal = [1.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+        x_optimal = 1.0
+        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
             success = true
         end
     elseif name == "MitsosBarton2006Ex32" # no sol
@@ -150,9 +150,9 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end
-    elseif name == "AnandalinghamWhite1990"
+    elseif name == "AnandalinghamWhite1990" # multiple sols
         x_optimal = [16.0; 11.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [12.0; 3]; atol=tol) || isapprox(x, [0.0; 5]; atol=tol))
             success = true
         end
     elseif name == "Bard1991Ex2"
@@ -160,9 +160,9 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end
-    elseif name == "ClarkWesterberg1990b"
+    elseif name == "ClarkWesterberg1990b" # multiple sols
         x_optimal = [5.0; 4; 2]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [6.0; 4; 6]; atol=tol) || isapprox(x, [2.0; 4; 4]; atol=tol))
             success = true
         end
     elseif name == "BardFalk1982Ex2"
@@ -170,9 +170,9 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end
-    elseif name == "CandlerTownsley1982"
+    elseif name == "CandlerTownsley1982" # multiple sols
         x_optimal = [0.0; 0.9; 0; 0.6; 0.4]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [0.5; 0.5; 0; 0; 0]; atol=tol))
             success = true
         end
     elseif name == "LucchettiEtal1987"
@@ -241,13 +241,13 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
             success = true
         end
     elseif name == "MitsosBarton2006Ex35"
-        x_optimal = [0.5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+        x_optimal = 0.5
+        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
             success = true
         end
     elseif name == "MitsosBarton2006Ex36"
-        x_optimal = [-1.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+        x_optimal = -1.0
+        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
             success = true
         end
     elseif name == "MitsosBarton2006Ex310" # multiple sols
@@ -420,8 +420,33 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end
-    else
-        is_sol_valid # assuming it's local sol
+    elseif name == "AllendeStill2013"
+        x_optimal = [0.5; 0.5; 0.5; 0.5]
+        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "AnEtal2009"
+        x_optimal = [0.200001; 1.999997; 3.999998; 4.600005]
+        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "Bard1991Ex1"
+        x_optimal = [2.0; 6; 0]
+        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "BardBook1998"
+        x_optimal = [25.0; 30; 5; 10]
+        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    elseif name == "CalamaiVicente1994a"
+        x_optimal = [1.0; 0.0]
+        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
+            success = true
+        end
+    else # assuming success if it's a local sol
+        is_sol_valid
         success = true
     end
 

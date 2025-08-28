@@ -1,8 +1,7 @@
 # Created by https://www.toptal.com/developers/gitignore/api/julia,visualstudiocode,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=julia,visualstudiocode,jupyternotebooks
 
-BASBLib_results.csv
-BOLIB_results.csv
+*.csv
 env_conf.jl
 forrest_solver.jl
 racing.jl
