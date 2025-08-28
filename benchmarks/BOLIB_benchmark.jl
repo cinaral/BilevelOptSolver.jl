@@ -176,7 +176,7 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
             success = true
         end
     elseif name == "LucchettiEtal1987"
-        x_optimal = [0.0; 0.9; 0; 0.6; 0.4]
+        x_optimal = [1.0; 0]
         if is_sol_valid && isapprox(x, x_optimal; atol=tol)
             success = true
         end
