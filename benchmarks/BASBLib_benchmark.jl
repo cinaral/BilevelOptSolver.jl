@@ -17,7 +17,7 @@ julia> include("benchmarks/BASBLib_benchmark.jl")
 julia> df = benchmark_BASBLib(example_ids=1:82);
 ```
 """
-function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true,  do_force_toggle=false, max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
+function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true,  do_force_toggle=false, max_rand_restart_ct=0, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]

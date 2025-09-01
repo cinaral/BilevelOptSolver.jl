@@ -14,12 +14,21 @@ julia> include("examples/BASBLib_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="as_2013_01", verbosity=5);
 ```
 """
-function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, max_rand_restart_ct=10, rating_tol=1e-3)
+function solve_BASBLib_prob(; name="as_2013_01", x_init=[], tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, max_rand_restart_ct=10, rating_tol=1e-3)
     prob = getfield(Main.BASBLib, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
-    x_init = zeros(bop.nx)
-    elapsed_time = @elapsed begin
+
+    function solve(x_init=[])
+        if isempty(x_init)
+            x_init = zeros(bop.nx)
+        end
         is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
+
+        (; is_sol_valid, x, λ, iter_count, status)
+    end
+
+    elapsed_time = @elapsed begin
+        is_sol_valid, x, λ, iter_count, status = solve(x_init)
     end
 
     Ff = [bop.F(x); bop.f(x)]
@@ -35,7 +44,7 @@ function solve_BASBLib_prob(; name="as_2013_01", tol=1e-7, verbosity=5, init_sol
         print(info)
     end
 
-    (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms)
+    (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms, solve)
 end
 
 function rate_BASBLib_result(name, x, Ff; tol=1e-3)
@@ -54,5 +63,19 @@ function rate_BASBLib_result(name, x, Ff; tol=1e-3)
     end
 end
 
-#(; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BASBLib_prob(name="as_2013_01", verbosity=5);
-#print(""); # hide output
+(; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms, solve) = solve_BASBLib_prob(name="as_1981_02", verbosity=0);
+print(""); # hide output
+
+#@btime solve()
+#include("../src/forrest_solver.jl")
+#using .forrest_solver
+#OP1 = forrest_solver.OptimizationProblem(bop.n1 + bop.n2, 1:bop.n1, bop.F, bop.G, zeros(bop.m1), fill(Inf, bop.m1))
+#OP2 = forrest_solver.OptimizationProblem(bop.n1 + bop.n2, 1:bop.n2, bop.f, bop.g, zeros(bop.m2), fill(Inf, bop.m2))
+#bilevel = [OP1; OP2]
+#out_bilevel = @btime forrest_solver.solve(bilevel)
+#x_forrest = out_bilevel[1:bop.n1+bop.n2]
+#@info x_forrest
+#@info bop.F(x_forrest)
+
+#nash = [OP1 OP2]
+#out_nash = forrest_solver.solve(nash)

@@ -12,10 +12,12 @@ julia> include("examples/BOLIB_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="AiyoshiShimizu1984Ex2", verbosity=5);
 ```
 """
-function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, max_rand_restart_ct=10, do_force_toggle=false, rating_tol=1e-3)
+function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", x_init = [], tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, max_rand_restart_ct=10, do_force_toggle=false, rating_tol=1e-3)
     prob = getfield(Main.BOLIB, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
-    x_init = prob.xy_init
+    if isempty(x_init)
+        x_init = prob.xy_init
+    end
     elapsed_time = @elapsed begin
         is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
     end

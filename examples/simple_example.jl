@@ -43,13 +43,10 @@ end
 xy_optimal = [1.0; -1.0]
 Ff_optimal = [-1.0; 1.0]
 
-x_init = [0.5; -0.5]  # leads to [1;-1] (optimal)
-#x_init = [-.5; -.5]  # leads to [0;0] (feasible)
-#x_init = [.5; .5]  # leads to [0.25;0.5] (feasible)
-#x_init = [-.5; .5]  # leads to [0.;0.] (feasible)
+x_init = [0.5; -0.5]  
 bop, syms = construct_bop(n1, n2, F, G, f, g; verbosity=0)
 param = [1.0; 1.0]
-is_sol_valid, x, λ, iter_count, status = solve_bop(bop; max_iter=50, x_init, verbosity=5, tol=1e-7, conv_dv_len=3, do_check_x_agreem=true, do_force_hp_init=false, do_require_strict_min=false, max_rand_restart_ct=50, init_solver="IPOPT", solver="IPOPT")
+is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, param, verbosity=5, solver="IPOPT")
 
 Ff = [bop.F([x; param]); bop.f([x; param])]
 

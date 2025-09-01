@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx),)
+function solve_bop(bop; x_init=zeros(bop.nx), param=Float64[], tol=1e-6, fol_feas_set_tol=1e-4, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx), print_sigdigs=3)
 
     @assert length(x_init) >= bop.nx "Wrong x_init length!"
 
@@ -40,7 +40,6 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
     prev_iter_v = zeros(bop.n)
 
     # restart stuff
-    fol_feas_set_tol = 1e3 * copy(tol)
     is_done = false
     is_converged = false
     is_initialized = false
@@ -95,7 +94,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
 
         #### initialize
         if !is_initialized
-            is_initialized = initialize_z!(v, bop; p, verbosity, init_solver, tol, do_force_hp_init)
+            is_initialized = initialize_z!(v, bop; param, verbosity, init_solver, tol, do_force_hp_init)
 
             norm_dv_arr = zeros(conv_dv_len)
             norm_dv_cur_idx = 1
@@ -113,7 +112,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
 
         # compute feasible sets
         # by this point, v must at least satisfy the follower's problem
-        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; p, tol=fol_feas_set_tol, verbosity, do_force_toggle)
+        follow_feas_Js = compute_follow_feas_ind_sets(bop, v; param, tol=fol_feas_set_tol, verbosity, do_force_toggle)
         if length(follow_feas_Js) == 0
             if verbosity > 1
                 print("Failed to compute follower feasible index sets: Not a valid solution! Maybe it's a tolerance issue?\n")
@@ -131,7 +130,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                     break
                 end
                 if verbosity > 1
-                    print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=2)) and trying again...\n")
+                    print("Relaxing follower feasible set tolerance $(round(fol_feas_set_tol,sigdigits=print_sigdigs)) and trying again...\n")
                 end
                 follow_feas_Js = compute_follow_feas_ind_sets(bop, v; tol=fol_feas_set_tol, do_force_toggle)
                 tol_restart_count += 1
@@ -145,7 +144,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
         end
 
         if verbosity > 2
-            print("x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
+            print("x=$(round.(v[bop.inds.v["x"]],sigdigits=print_sigdigs)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=print_sigdigs))\n")
         end
 
         if n_J > 1 && verbosity > 1
@@ -174,7 +173,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                     print("Already attempted: ")
                 end
             else
-                is_solved = solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol, solver, p, verbosity, solver_output=0)
+                is_solved = solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol, solver, param, verbosity, solver_output=0)
                 push!(J2_seen_arr, copy(J[2]))
                 push!(v_seen_arr, copy(v))
                 push!(Λ_seen_arr, copy(Λ))
@@ -189,7 +188,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                     has_v_changed = true
                 end
 
-                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; p, tol, do_require_strict_min)
+                is_fol_nec, is_fol_suf = check_follower_sol(v, bop; param, tol, do_require_strict_min)
                 push!(is_necc_fol, is_fol_nec)
                 push!(is_sufc_fol, is_fol_suf)
                 push!(v_arr, copy(v))
@@ -197,12 +196,12 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                 push!(i_arr, i)
 
                 if verbosity > 2
-                    print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2=$(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
+                    print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2=$(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=print_sigdigs)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=print_sigdigs))\n")
                 end
 
             else
                 if verbosity > 1
-                    print("SBOP$i: FAILED J2: $(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=2)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=2))\n")
+                    print("SBOP$i: FAILED J2: $(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=print_sigdigs)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=print_sigdigs))\n")
                 end
             end
         end
@@ -219,8 +218,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
         end
 
         # update v based on cost among the solutions
-        Fs = map(v -> bop.F([v[bop.inds.v["x"]]; p]), v_arr)
-        fs = map(v -> bop.f([v[bop.inds.v["x"]]; p]), v_arr)
+        Fs = map(v -> bop.F([v[bop.inds.v["x"]]; param]), v_arr)
+        fs = map(v -> bop.f([v[bop.inds.v["x"]]; param]), v_arr)
         F_ = Inf
         chosen_i = 0
         for (i, is_fol_nec) in enumerate(is_necc_fol)
@@ -233,7 +232,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
                 end
             end
             if verbosity > 4
-                print("Considering SBOP$(i_arr[i]): F(x): $(round.(Fs[i],sigdigits=2)) f(x): $(round.(fs[i],sigdigits=2))\n")
+                print("Considering SBOP$(i_arr[i]): F(x): $(round.(Fs[i],sigdigits=print_sigdigs)) f(x): $(round.(fs[i],sigdigits=print_sigdigs))\n")
             end
             if Fs[i] < F_  # choose the smallest available F value
                 chosen_i = i_arr[i]
@@ -244,7 +243,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
         end
 
         if verbosity > 1
-            print("Chose SBOP$chosen_i x=$(round.(v[bop.inds.v["x"]],sigdigits=3)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=3))\n")
+            print("Chose SBOP$chosen_i x=$(round.(v[bop.inds.v["x"]],sigdigits=print_sigdigs)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=print_sigdigs))\n")
         end
 
         #all(is_necc_SBOPi) # this will usually be false
@@ -333,7 +332,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
 
     # final sanity check
     if is_sol_valid
-        if !(all(bop.G([x; p]) .≥ 0 - tol) && all(bop.g([x; p]) .≥ 0 - tol))
+        if !(all(bop.G([x; param]) .≥ 0 - tol) && all(bop.g([x; param]) .≥ 0 - tol))
             if verbosity > 0
                 print("Something went VERY wrong!\n")
             end
@@ -348,7 +347,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), p=Float64[], tol=1e-6, fol_feas_se
     (; is_sol_valid, x, λ, iter_count, status)
 end
 
-function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", tol=1e-6, max_iter=100, do_force_hp_init=false)
+function initialize_z!(v, bop; param=Float64[], verbosity=0, init_solver="IPOPT", tol=1e-6, max_iter=100, do_force_hp_init=false)
     # if BOPᵢ wasn't solved the low level solution may be invalid, and we have to call the follower nlp
     if verbosity > 1
         print("Initializing...\n")
@@ -359,7 +358,7 @@ function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", to
     success = false
 
     if !do_force_hp_init
-        (; x2, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, p)
+        (; x2, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, param)
     end
 
     # if failure it may be that the feasible region of the follower is empty for x₁
@@ -367,14 +366,14 @@ function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", to
         if verbosity > 1
             print("Resetting x to a bilevel feasible point using high-point relaxation...\n")
         end
-        x, is_x_feasible = solve_high_point_nlp(bop; p, x_init=[x1; x2], tol, max_iter, solver=init_solver)
+        x, is_x_feasible = solve_high_point_nlp(bop; param, x_init=[x1; x2], tol, max_iter, solver=init_solver)
 
         x1 = @view x[bop.inds.x["x1"]]
         x2 = @view x[bop.inds.x["x2"]]
 
         if is_x_feasible # we try again
             v[bop.inds.v["x1"]] .= x1
-            (; x2, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, p)
+            (; x2, λ, success) = solve_follower_nlp(bop, x1; x2_init=x2, solver=init_solver, tol, param)
         else
             if verbosity > 1
                 print("Failed resetting x to a bilevel feasible point, the problem may be bilevel infeasible! Check your x_init, G(x), and g(x).\n")
@@ -390,19 +389,19 @@ function initialize_z!(v, bop; p=Float64[], verbosity=0, init_solver="IPOPT", to
     return success
 end
 
-function solve_follower_nlp(bop, x1; x2_init=zeros(bop.fol_nlp.n), p=Float64[], solver="IPOPT", tol=1e-6, max_iter=1000, verbosity=0, is_debug_on=false, solver_output=0)
+function solve_follower_nlp(bop, x1; x2_init=zeros(bop.fol_nlp.n), param=Float64[], solver="IPOPT", tol=1e-6, max_iter=1000, verbosity=0, is_debug_on=false, solver_output=0)
     success = false
 
     if solver == "IPOPT"
         nlp = bop.fol_nlp
-        x2, λ, solvestat, _ = BilevelOptSolver.solve_NLP(nlp.n, nlp.m, nlp.xl, nlp.xu, nlp.gl, nlp.gu, nlp.f, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; x_init=x2_init, λ_init=zeros(nlp.m), q=x1, p, verbosity, tol, max_iter, is_debug_on, print_level=solver_output, is_using_HSL=false)
+        x2, λ, solvestat, _ = BilevelOptSolver.solve_NLP(nlp.n, nlp.m, nlp.xl, nlp.xu, nlp.gl, nlp.gu, nlp.f, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; x_init=x2_init, λ_init=zeros(nlp.m), q=x1, p=param, verbosity, tol, max_iter, is_debug_on, print_level=solver_output, is_using_HSL=false)
         success = solvestat == 0
     elseif solver == "PATH"
         mcp = bop.fol_mcp
         z_init = zeros(mcp.n)
         z_init[bop.inds.z["x2"]] .= x2_init
 
-        z, status, _ = BilevelOptSolver.solve_PATH(mcp.n, mcp.zl, mcp.zu, mcp.h!, mcp.∇h_rows, mcp.∇h_cols, mcp.∇h_vals!; q=x1, p, verbosity, is_debug_on, x_init=z_init, tol, max_iter, is_silent=(solver_output == 0))
+        z, status, _ = BilevelOptSolver.solve_PATH(mcp.n, mcp.zl, mcp.zu, mcp.h!, mcp.∇h_rows, mcp.∇h_cols, mcp.∇h_vals!; q=x1, p=param, verbosity, is_debug_on, x_init=z_init, tol, max_iter, is_silent=(solver_output == 0))
         x2 = z[bop.inds.z["x2"]]
         λ = z[bop.inds.z["λ"]]
 
@@ -412,7 +411,7 @@ function solve_follower_nlp(bop, x1; x2_init=zeros(bop.fol_nlp.n), p=Float64[], 
     (; x2, λ, success)
 end
 
-function solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol=1e-6, max_iter=1000, p=Float64[], solver="IPOPT", verbosity=0, is_debug_on=false, solver_output=0)
+function solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol=1e-6, max_iter=1000, param=Float64[], solver="IPOPT", verbosity=0, is_debug_on=false, solver_output=0)
     if solver == "IPOPT"
         nlp = bop.sbop_nlp
 
@@ -422,7 +421,7 @@ function solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol=1e-6, max_iter=1000, p=
         Γl[bop.inds.Γ["hu"]] .= -hu
         Γl[bop.inds.Γ["zu"]] .= -zu
 
-        v_out, Λ_out, solvestat, _ = BilevelOptSolver.solve_NLP(nlp.n, nlp.m, nlp.xl, nlp.xu, Γl, nlp.gu, nlp.f, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; x_init=v, λ_init=Λ, p, verbosity, tol, max_iter, is_debug_on, print_level=solver_output, is_using_HSL=false)
+        v_out, Λ_out, solvestat, _ = BilevelOptSolver.solve_NLP(nlp.n, nlp.m, nlp.xl, nlp.xu, Γl, nlp.gu, nlp.f, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; x_init=v, λ_init=Λ, p=param, verbosity, tol, max_iter, is_debug_on, print_level=solver_output, is_using_HSL=false)
         v .= v_out
         Λ .= Λ_out
         success = solvestat == 0
@@ -438,7 +437,7 @@ function solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol=1e-6, max_iter=1000, p=
         θl[bop.inds.θ["rzu"]] .= -zu
         θl[bop.inds.θ["rhu"]] .= -hu
 
-        θ, status, _ = BilevelOptSolver.solve_PATH(mcp.n, θl, mcp.zu, mcp.h!, mcp.∇h_rows, mcp.∇h_cols, mcp.∇h_vals!; p, verbosity, is_debug_on, x_init=θ_init, tol, max_iter, is_silent=(solver_output == 0))
+        θ, status, _ = BilevelOptSolver.solve_PATH(mcp.n, θl, mcp.zu, mcp.h!, mcp.∇h_rows, mcp.∇h_cols, mcp.∇h_vals!; p=param, verbosity, is_debug_on, x_init=θ_init, tol, max_iter, is_silent=(solver_output == 0))
         v[bop.inds.v["v"]] .= θ[bop.inds.θ["v"]]
         Λ .= θ[bop.inds.θ["Λ"]]
 
@@ -446,17 +445,17 @@ function solve_sbop_nlp!(v, Λ, bop, hl, hu, zl, zu; tol=1e-6, max_iter=1000, p=
     end
 end
 
-function solve_high_point_nlp(bop; x_init=zeros(bop.hp_nlp.n), p=Float64[], tol=1e-6, max_iter=1000, solver="PATH", verbosity=0, is_debug_on=false, solver_output=0)
+function solve_high_point_nlp(bop; x_init=zeros(bop.hp_nlp.n), param=Float64[], tol=1e-6, max_iter=1000, solver="PATH", verbosity=0, is_debug_on=false, solver_output=0)
     if solver == "IPOPT"
         nlp = bop.hp_nlp
-        x, _, solvestat, _ = BilevelOptSolver.solve_NLP(nlp.n, nlp.m, nlp.xl, nlp.xu, nlp.gl, nlp.gu, nlp.f, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; x_init, λ_init=zeros(nlp.m), p, verbosity, tol, max_iter, is_debug_on, print_level=solver_output, is_using_HSL=false)
+        x, _, solvestat, _ = BilevelOptSolver.solve_NLP(nlp.n, nlp.m, nlp.xl, nlp.xu, nlp.gl, nlp.gu, nlp.f, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; x_init, λ_init=zeros(nlp.m), p=param, verbosity, tol, max_iter, is_debug_on, print_level=solver_output, is_using_HSL=false)
         success = solvestat == 0 || solvestat == 1 # this is acceptable too since we only care about feasibility
     elseif solver == "PATH"
         mcp = bop.hp_mcp
         z_init = zeros(bop.hp_mcp.n)
         z_init[1:bop.nx] .= x_init
 
-        z, status, _ = BilevelOptSolver.solve_PATH(mcp.n, mcp.zl, mcp.zu, mcp.h!, mcp.∇h_rows, mcp.∇h_cols, mcp.∇h_vals!; p, verbosity, is_debug_on, x_init=z_init, tol, max_iter, is_silent=(solver_output == 0))
+        z, status, _ = BilevelOptSolver.solve_PATH(mcp.n, mcp.zl, mcp.zu, mcp.h!, mcp.∇h_rows, mcp.∇h_cols, mcp.∇h_vals!; p=param, verbosity, is_debug_on, x_init=z_init, tol, max_iter, is_silent=(solver_output == 0))
         x = z[1:bop.nx]
 
         success = status == PATHSolver.MCP_Solved
@@ -465,15 +464,15 @@ function solve_high_point_nlp(bop; x_init=zeros(bop.hp_nlp.n), p=Float64[], tol=
     (; x, success)
 end
 
-function check_follower_sol(v, bop; p=Float64[], tol=1e-5, do_require_strict_min=true)
+function check_follower_sol(v, bop; param=Float64[], tol=1e-5, do_require_strict_min=true)
     x = @view v[bop.inds.v["x"]]
     λ = @view v[bop.inds.v["λ"]]
     nlp = bop.fol_nlp
 
-    check_nlp_sol(x, λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; p, tol, do_require_strict_min)
+    check_nlp_sol(x, λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; param, tol, do_require_strict_min)
 end
 
-function check_sbop_sol(v, Λ, bop, hl, hu, zl, zu; p=Float64[], tol=1e-5)
+function check_sbop_sol(v, Λ, bop, hl, hu, zl, zu; param=Float64[], tol=1e-5)
     nlp = bop.sbop_nlp
     Γl = fill(0.0, nlp.m)
     Γl[bop.inds.Γ["hl"]] .= hl
@@ -481,22 +480,22 @@ function check_sbop_sol(v, Λ, bop, hl, hu, zl, zu; p=Float64[], tol=1e-5)
     Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zu"]] .= -zu
 
-    check_nlp_sol(v, Λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; p, tol)
+    check_nlp_sol(v, Λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; param, tol)
 end
 
 """
 n_actual refers to part of v that corresponds to x1 and x2, and without the λ part which always violates SC 
 """
-function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; p=Float64[], tol=1e-5, do_require_strict_min=true)
+function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; param=Float64[], tol=1e-5, do_require_strict_min=true)
 
     g = zeros(m)
     ∇ₓf = zeros(n)
     ∇ₓg = sparse(∇ₓg_rows, ∇ₓg_cols, zeros(length(∇ₓg_rows)), ∇ₓg_size[1], ∇ₓg_size[2])
     ∇²ₓL = sparse(∇²ₓL_rows, ∇²ₓL_cols, zeros(length(∇²ₓL_rows)), ∇²ₓL_size[1], ∇²ₓL_size[2])
-    g!(g, [x; p])
-    ∇ₓf!(∇ₓf, [x; p])
-    ∇ₓg_vals!(∇ₓg.nzval, [x; p])
-    ∇²ₓL_vals!(∇²ₓL.nzval, [x; p], λ, 1.0)
+    g!(g, [x; param])
+    ∇ₓf!(∇ₓf, [x; param])
+    ∇ₓg_vals!(∇ₓg.nzval, [x; param])
+    ∇²ₓL_vals!(∇²ₓL.nzval, [x; param], λ, 1.0)
 
     # necessary conditions
     is_stationary = all(isapprox.(∇ₓf - ∇ₓg' * λ, 0; atol=tol))
@@ -607,10 +606,10 @@ end
 
 # for the follower's problem
 # check_nlp_sol(x, λ, bop.n2, bop.m2, zeros(bop.m2), bop.g!, bop.∇ₓ₂f!, bop.∇ₓ₂g_size, bop.∇ₓ₂g_rows, bop.∇ₓ₂g_cols, bop.∇ₓ₂g_vals!, bop.∇²ₓ₂L2_size, bop.∇²ₓ₂L2_rows, bop.∇²ₓ₂L2_cols, bop.∇²ₓ₂L2_vals!)
-function compute_follow_feas_ind_sets(bop, v; p=Float64[], tol=1e-3, verbosity=0, do_force_toggle=false)
+function compute_follow_feas_ind_sets(bop, v; param=Float64[], tol=1e-3, verbosity=0, do_force_toggle=false)
     Js = Vector{Dict{Int,Set{Int}}}()
     h = zeros(bop.nz)
-    bop.fol_mcp.h!(h, [v; p])
+    bop.fol_mcp.h!(h, [v; param])
     z = @view v[bop.inds.v["z"]]
     is_valid, K = check_mcp_sol(bop, bop.nz, h, z, bop.fol_mcp.zl, bop.fol_mcp.zu; tol, do_force_toggle)
 
