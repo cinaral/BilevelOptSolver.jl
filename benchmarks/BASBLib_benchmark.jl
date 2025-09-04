@@ -58,7 +58,6 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
         end
 
         dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Success" => success, "is_sol_valid" => is_sol_valid, "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(prob.xy_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
-        Main.@infiltrate
         push!(success_arr, success)
         push!(elapsed_arr, elapsed_time)
     end

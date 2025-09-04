@@ -327,8 +327,10 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=Float64[], tol=1e-6, fol_fea
         end
     end
 
-    x = v[bop.inds.v["x"]]
-    λ = v[bop.inds.v["λ"]]
+    x = zeros(bop.nx)
+    λ = zeros(bop.m2)
+    x .= v[bop.inds.v["x"]]
+    λ .= v[bop.inds.v["λ"]]
 
     # final sanity check
     if is_sol_valid
@@ -487,7 +489,6 @@ end
 n_actual refers to part of v that corresponds to x1 and x2, and without the λ part which always violates SC 
 """
 function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows, ∇ₓg_cols, ∇ₓg_vals!, ∇²ₓL_size, ∇²ₓL_rows, ∇²ₓL_cols, ∇²ₓL_vals!; param=Float64[], tol=1e-5, do_require_strict_min=true)
-
     g = zeros(m)
     ∇ₓf = zeros(n)
     ∇ₓg = sparse(∇ₓg_rows, ∇ₓg_cols, zeros(length(∇ₓg_rows)), ∇ₓg_size[1], ∇ₓg_size[2])
