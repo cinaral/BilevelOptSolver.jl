@@ -97,7 +97,7 @@ Usage:
 ```
 ```
 """
-function create_solve(prob; tol=1e-7, verbosity=5, init_solver="PATH", solver="PATH", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, max_rand_restart_ct=0)
+function create_solve(prob; tol=1e-7, verbosity=0, init_solver="PATH", solver="PATH", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, do_force_toggle=false, max_rand_restart_ct=0)
     bop, _ = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
 
     function solve(; x_init=prob.xy_init)
@@ -112,62 +112,78 @@ function create_solve(prob; tol=1e-7, verbosity=5, init_solver="PATH", solver="P
     (; solve, bop)
 end
 
-solve, bop = create_solve(RobustPortfolioP1(90));
-is_sol_valid, x, λ, iter_count, status = solve(x_init=rand(bop.nx));
-#solve, _ = @btime create_solve(RobustPortfolioP1(10));
-#bench = @benchmark solve();
-#include("../benchmarks/RobustPortfolio/10_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/10_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_10_bench = @benchmark solve_P1();
-#P2_10_bench = @benchmark solve_P2();
-#include("../benchmarks/RobustPortfolio/20_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/20_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_20_bench = @benchmark solve_P1();
-#P2_20_bench = @benchmark solve_P2();
-#include("../benchmarks/RobustPortfolio/30_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/30_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_30_bench = @benchmark solve_P1();
-#P2_30_bench = @benchmark solve_P2();
-#include("../benchmarks/RobustPortfolio/40_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/40_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_40_bench = @benchmark solve_P1();
-#P2_40_bench = @benchmark solve_P2();
+# fails to compile
+#solve, bop = create_solve(RobustPortfolioP1(50));
+#is_sol_valid, x, λ, iter_count, status = solve(x_init=rand(bop.nx));
 
-#include("../benchmarks/RobustPortfolio/50_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/50_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_50_bench = @benchmark solve_P1();
-#P2_50_bench = @benchmark solve_P2();
-#include("../benchmarks/RobustPortfolio/60_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/60_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_60_bench = @benchmark solve_P1();
-#P2_60_bench = @benchmark solve_P2();
-#include("../benchmarks/RobustPortfolio/70_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/70_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_70_bench = @benchmark solve_P1();
-#P2_70_bench = @benchmark solve_P2();
-#include("../benchmarks/RobustPortfolio/80_RobustPortfolioP1.jl")
-#include("../benchmarks/RobustPortfolio/80_RobustPortfolioP2.jl")
-#solve_P1, _ = @btime create_solve(RobustPortfolioP1());
-#solve_P2, _ = @btime create_solve(RobustPortfolioP2());
-#P1_80_bench = @benchmark solve_P1();
-#P2_80_bench = @benchmark solve_P2();
+solve, _ = @btime create_solve(RobustPortfolioP1(10));
+bench = @benchmark solve();
+include("../benchmarks/RobustPortfolio/10_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/10_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_10_bench = @benchmark solve_P1();
+P2_10_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/20_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/20_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_20_bench = @benchmark solve_P1();
+P2_20_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/30_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/30_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_30_bench = @benchmark solve_P1();
+P2_30_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/40_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/40_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_40_bench = @benchmark solve_P1();
+P2_40_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/50_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/50_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_50_bench = @benchmark solve_P1();
+P2_50_bench = @benchmark solve_P2();
 
-#P1_benchs = (; N10=P1_10_bench, N20=P1_20_bench, N30=P1_30_bench, N40=P1_40_bench, N50=P1_50_bench, N60=P1_60_bench, N70=P1_70_bench, N80=P1_80_bench);
-#P2_benchs = (; N10=P2_10_bench, N20=P2_20_bench, N30=P2_30_bench, N40=P2_40_bench, N50=P2_50_bench, N60=P2_60_bench, N70=P2_70_bench, N80=P2_80_bench);
+include("../benchmarks/RobustPortfolio/60_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/60_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_60_bench = @benchmark solve_P1();
+P2_60_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/70_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/70_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_70_bench = @benchmark solve_P1();
+P2_70_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/80_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/80_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_80_bench = @benchmark solve_P1();
+P2_80_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/90_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/90_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_90_bench = @benchmark solve_P1();
+P2_90_bench = @benchmark solve_P2();
+include("../benchmarks/RobustPortfolio/100_RobustPortfolioP1.jl")
+include("../benchmarks/RobustPortfolio/100_RobustPortfolioP2.jl")
+solve_P1, _ = @btime create_solve(RobustPortfolioP1());
+solve_P2, _ = @btime create_solve(RobustPortfolioP2());
+P1_100_bench = @benchmark solve_P1();
+P2_100_bench = @benchmark solve_P2();
+
+
+
+P1_benchs = (; N10=P1_10_bench, N20=P1_20_bench, N30=P1_30_bench, N40=P1_40_bench, N50=P1_50_bench, N60=P1_60_bench, N70=P1_70_bench, N80=P1_80_bench, N90=P1_90_bench, N100=P1_100_bench);
+P2_benchs = (; N10=P2_10_bench, N20=P2_20_bench, N30=P2_30_bench, N40=P2_40_bench, N50=P2_50_bench, N60=P2_60_bench, N70=P2_70_bench, N80=P2_80_bench, N90=P2_90_bench, N100=P2_100_bench);
 #(; is_sol_valid, x, λ, iter_count, status) = @btime solve_P2()
 
 #bop =  bop_P1;
