@@ -35,9 +35,9 @@ function RobustPortfolioP1(N; d=2)
         si = ((0.05 / 3 / N) * sqrt.(2 * N * (N + 1) .* i)) .^ d
         yi = 1.15 .+ (0.05 / N) .* i
         [
-			sum((abs.(y .- yi)).^d ./ si) - 1.5^d; 
-			y
-		]
+            sum((abs.(y .- yi)) .^ d ./ si) - 1.5^d;
+            y
+        ]
     end
 
     xy_init = ones(n1 + n2)
@@ -186,6 +186,23 @@ P1_benchs = (; N10=P1_10_bench, N20=P1_20_bench, N30=P1_30_bench, N40=P1_40_benc
 P2_benchs = (; N10=P2_10_bench, N20=P2_20_bench, N30=P2_30_bench, N40=P2_40_bench, N50=P2_50_bench, N60=P2_60_bench, N70=P2_70_bench, N80=P2_80_bench, N90=P2_90_bench, N100=P2_100_bench);
 #(; is_sol_valid, x, λ, iter_count, status) = @btime solve_P2()
 
+P1_medians = [median(P1_benchs.N10.times); median(P1_benchs.N20.times); median(P1_benchs.N30.times); median(P1_benchs.N40.times); median(P1_benchs.N50.times); median(P1_benchs.N60.times); median(P1_benchs.N70.times); median(P1_benchs.N80.times); median(P1_benchs.N90.times); median(P1_benchs.N100.times)] ./ 1e9
+
+P2_medians = [median(P2_benchs.N10.times); median(P2_benchs.N20.times); median(P2_benchs.N30.times); median(P2_benchs.N40.times); median(P2_benchs.N50.times); median(P2_benchs.N60.times); median(P2_benchs.N70.times); median(P2_benchs.N80.times); median(P2_benchs.N90.times); median(P2_benchs.N100.times)] ./ 1e9
+
+P1_means = [mean(P1_benchs.N10.times); mean(P1_benchs.N20.times); mean(P1_benchs.N30.times); mean(P1_benchs.N40.times); mean(P1_benchs.N50.times); mean(P1_benchs.N60.times); mean(P1_benchs.N70.times); mean(P1_benchs.N80.times); mean(P1_benchs.N90.times); mean(P1_benchs.N100.times)] ./ 1e9
+
+P2_means = [mean(P2_benchs.N10.times); mean(P2_benchs.N20.times); mean(P2_benchs.N30.times); mean(P2_benchs.N40.times); mean(P2_benchs.N50.times); mean(P2_benchs.N60.times); mean(P2_benchs.N70.times); mean(P2_benchs.N80.times); mean(P2_benchs.N90.times); mean(P2_benchs.N100.times)] ./ 1e9
+
+function get_CI(vals; scale=1.0)
+    vals = vals .* scale
+    CI = 1.96 * std(vals) / sqrt(length(vals))
+    CI
+end
+
+P1_CI = [get_CI(P1_benchs.N10.times); get_CI(P1_benchs.N20.times); get_CI(P1_benchs.N30.times); get_CI(P1_benchs.N40.times); get_CI(P1_benchs.N50.times); get_CI(P1_benchs.N60.times); get_CI(P1_benchs.N70.times); get_CI(P1_benchs.N80.times); get_CI(P1_benchs.N90.times); get_CI(P1_benchs.N100.times)] ./ 1e9
+
+P2_CI = [get_CI(P2_benchs.N10.times); get_CI(P2_benchs.N20.times); get_CI(P2_benchs.N30.times); get_CI(P2_benchs.N40.times); get_CI(P2_benchs.N50.times); get_CI(P2_benchs.N60.times); get_CI(P2_benchs.N70.times); get_CI(P2_benchs.N80.times); get_CI(P2_benchs.N90.times); get_CI(P2_benchs.N100.times)] ./ 1e9
 #bop =  bop_P1;
 print("")
 #bop =  bop_P2 # fails
