@@ -199,6 +199,8 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=Float64[], tol=1e-6, fol_fea
                     print("SBOP$i: Solved (follower nc: $is_fol_nec sc: $is_fol_suf) J2=$(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=print_sigdigs)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=print_sigdigs))\n")
                 end
 
+                is_sbop_nec, is_sbop_suf = check_sbop_sol(v, Λ, bop, hl, hu, zl, zu; param, tol)
+                @info "sbop N $is_sbop_nec / S $is_sbop_suf"
             else
                 if verbosity > 1
                     print("SBOP$i: FAILED J2: $(J[2]), x=$(round.(v[bop.inds.v["x"]],sigdigits=print_sigdigs)), λ=$(round.(v[bop.inds.v["λ"]],sigdigits=print_sigdigs))\n")
@@ -482,7 +484,8 @@ function check_sbop_sol(v, Λ, bop, hl, hu, zl, zu; param=Float64[], tol=1e-5)
     Γl[bop.inds.Γ["hu"]] .= -hu
     Γl[bop.inds.Γ["zu"]] .= -zu
 
-    check_nlp_sol(v, Λ, nlp.n, nlp.m, zeros(nlp.m), nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; param, tol)
+    #Main.@infiltrate
+    check_nlp_sol(v, Λ, nlp.n, nlp.m, Γl, nlp.g!, nlp.∇ₓf!, nlp.∇ₓg_size, nlp.∇ₓg_rows, nlp.∇ₓg_cols, nlp.∇ₓg_vals!, nlp.∇²ₓL_size, nlp.∇²ₓL_rows, nlp.∇²ₓL_cols, nlp.∇²ₓL_vals!; param, tol)
 end
 
 """
@@ -531,6 +534,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         if n - r > 0
             Z = V[:, n-r+1:n]
             min_eig = eigmin(Z' * ∇²ₓL * Z)
+            #Main.@infiltrate
         elseif n - r == 0 # no feasible directions exist
             is_sufficient = true
         end
@@ -550,7 +554,7 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
 
     is_necessary = is_stationary && is_complement && is_primal_feas && is_dual_feas
     is_sufficient = is_necessary && is_sufficient
-
+#Main.@infiltrate
     (; is_necessary, is_sufficient)
 end
 

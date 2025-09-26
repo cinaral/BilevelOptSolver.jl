@@ -180,8 +180,6 @@ solve_P2, _ = @btime create_solve(RobustPortfolioP2());
 P1_100_bench = @benchmark solve_P1();
 P2_100_bench = @benchmark solve_P2();
 
-
-
 P1_benchs = (; N10=P1_10_bench, N20=P1_20_bench, N30=P1_30_bench, N40=P1_40_bench, N50=P1_50_bench, N60=P1_60_bench, N70=P1_70_bench, N80=P1_80_bench, N90=P1_90_bench, N100=P1_100_bench);
 P2_benchs = (; N10=P2_10_bench, N20=P2_20_bench, N30=P2_30_bench, N40=P2_40_bench, N50=P2_50_bench, N60=P2_60_bench, N70=P2_70_bench, N80=P2_80_bench, N90=P2_90_bench, N100=P2_100_bench);
 #(; is_sol_valid, x, λ, iter_count, status) = @btime solve_P2()
@@ -203,6 +201,39 @@ end
 P1_CI = [get_CI(P1_benchs.N10.times); get_CI(P1_benchs.N20.times); get_CI(P1_benchs.N30.times); get_CI(P1_benchs.N40.times); get_CI(P1_benchs.N50.times); get_CI(P1_benchs.N60.times); get_CI(P1_benchs.N70.times); get_CI(P1_benchs.N80.times); get_CI(P1_benchs.N90.times); get_CI(P1_benchs.N100.times)] ./ 1e9
 
 P2_CI = [get_CI(P2_benchs.N10.times); get_CI(P2_benchs.N20.times); get_CI(P2_benchs.N30.times); get_CI(P2_benchs.N40.times); get_CI(P2_benchs.N50.times); get_CI(P2_benchs.N60.times); get_CI(P2_benchs.N70.times); get_CI(P2_benchs.N80.times); get_CI(P2_benchs.N90.times); get_CI(P2_benchs.N100.times)] ./ 1e9
+
+#P1_means = [0.00347315
+#0.0043901
+#0.0048312
+#0.0062719
+#0.0072221
+#0.009388
+#0.008347
+#0.00942525
+#0.01040315
+#0.0146771
+#]
+#P2_means = [0.2037161
+#0.2309925
+#0.67421825
+#0.8523594
+#1.1406361
+#1.5333983
+#1.734028
+#2.0509055
+#2.9242926
+#2.8849767
+#]
+
+#p = plot(10:10:100, P1_means)
+#plot!(p, size=(400, 200), xlabel="N", ylabel="Median " * L"t_c" * " (ms)", yaxis=(formatter = y -> round(y*1e3; sigdigits=4)), legend=false)
+#savefig("./output/RobustPorfolioP1_scaling.pdf")
+
+#p = plot(10:10:100, P2_means)
+#plot!(p, size=(400, 200), xlabel="N", ylabel="Median " * L"t_c" * " (s)", yaxis=(formatter = y -> round(y; sigdigits=4)), legend=false)
+#savefig("./output/RobustPorfolioP2_scaling.pdf")
+#plot!(p, 10:10:100, P2_means)
+
 #bop =  bop_P1;
 print("")
 #bop =  bop_P2 # fails
