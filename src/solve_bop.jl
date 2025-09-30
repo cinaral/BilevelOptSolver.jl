@@ -10,7 +10,7 @@ Verbosity:
     6: full: v trace
 ```
 """
-function solve_bop(bop; x_init=zeros(bop.nx), param=Float64[], tol=1e-6, fol_feas_set_tol=1e-4, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=false, do_check_x_agreem=true, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx), print_sigdigs=3)
+function solve_bop(bop; x_init=zeros(bop.nx), param=Float64[], tol=1e-6, fol_feas_set_tol=1e-4, fol_feas_set_tol_max=1e0, x_agree_tol=1e-4, max_iter=50, verbosity=0, init_solver="IPOPT", solver="IPOPT", conv_tol=1e-4, conv_dv_len=3, max_rand_restart_ct=10, do_force_hp_init=false, do_require_all_solved=true, do_check_x_agreem=true, rng=MersenneTwister(123), x_init_min=fill(-1.0, bop.nx), x_init_max=fill(1.0, bop.nx), print_sigdigs=3)
 
     @assert length(x_init) >= bop.nx "Wrong x_init length!"
 
