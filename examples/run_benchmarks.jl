@@ -1,7 +1,7 @@
 using CSV
 
-init_solver="IPOPT"
-solver="IPOPT"
+init_solver = "IPOPT"
+solver = "IPOPT"
 
 # you could simply use these instead, but this example is in the paper table order...
 #include("../benchmarks/BASBLib_benchmark.jl")
@@ -182,17 +182,21 @@ IshizukaAiyoshi1992a
 CalveteGale1999P1
 WanWangLv2011
 LuDebSinha2016f"
-LPLP_BOLIB_p1_res = benchmark_BOLIB(; example_ids=convert_to_id_list(LPLP_BOLIB_p1, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-LPLP_BOLIB_p2_res = benchmark_BOLIB(; example_ids=convert_to_id_list(LPLP_BOLIB_p2, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-LPQP_BOLIB_p1_res = benchmark_BOLIB(; example_ids=convert_to_id_list(LPQP_BOLIB_p1, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-LPQP_BOLIB_p2_res = benchmark_BOLIB(; example_ids=convert_to_id_list(LPQP_BOLIB_p2, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-QPQP_BOLIB_p1_res = benchmark_BOLIB(; example_ids=convert_to_id_list(QPQP_BOLIB_p1, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-QPQP_BOLIB_p2_res = benchmark_BOLIB(; example_ids=convert_to_id_list(QPQP_BOLIB_p2, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-LPNLP_BOLIB_p1_res = benchmark_BOLIB(; example_ids=convert_to_id_list(LPNLP_BOLIB_p1, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-LPNLP_BOLIB_p2_res = benchmark_BOLIB(; example_ids=convert_to_id_list(LPNLP_BOLIB_p2, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-QPNLP_BOLIB_p1_res = benchmark_BOLIB(; example_ids=convert_to_id_list(QPNLP_BOLIB_p1, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-QPNLP_BOLIB_p2_res = benchmark_BOLIB(; example_ids=convert_to_id_list(QPNLP_BOLIB_p2, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
-others_BOLIB_p2_res = benchmark_BOLIB(; example_ids=convert_to_id_list(others_BOLIB, BOLIB.examples), init_solver, solver, do_force_dry_run=true);
+example_ids =
+    [
+		convert_to_id_list(LPLP_BOLIB_p1, BOLIB.examples)
+        convert_to_id_list(LPLP_BOLIB_p2, BOLIB.examples)
+        convert_to_id_list(LPQP_BOLIB_p1, BOLIB.examples)
+        convert_to_id_list(LPQP_BOLIB_p2, BOLIB.examples)
+		convert_to_id_list(QPQP_BOLIB_p1, BOLIB.examples)
+		convert_to_id_list(QPQP_BOLIB_p2, BOLIB.examples)
+		convert_to_id_list(LPNLP_BOLIB_p1, BOLIB.examples)
+		convert_to_id_list(LPNLP_BOLIB_p2, BOLIB.examples)
+		convert_to_id_list(QPNLP_BOLIB_p1, BOLIB.examples)
+		convert_to_id_list(QPNLP_BOLIB_p2, BOLIB.examples)
+		convert_to_id_list(others_BOLIB, BOLIB.examples)
+    ]
+BOLIB_res = benchmark_BOLIB(; example_ids, init_solver, solver, do_force_dry_run=true);
 
 include("../benchmarks/BASBLib_benchmark.jl")
 LPLP_BASBLib = "as_2013_01
@@ -216,29 +220,19 @@ gf_2001_01
 cg_1999_01"
 QPNLP_BASBLib = "mb_2007_18v
 mb_2007_22"
-LPLP_BASBLib_res = benchmark_BASBLib(; example_ids=convert_to_id_list(LPLP_BASBLib, BASBLib.examples), init_solver, solver, do_force_dry_run=true);
-LPQP_BASBLib_res = benchmark_BASBLib(; example_ids=convert_to_id_list(LPQP_BASBLib, BASBLib.examples), init_solver, solver, do_force_dry_run=true);
-QPQP_BASBlib_res = benchmark_BASBLib(; example_ids=convert_to_id_list(QPQP_BASBlib, BASBLib.examples), init_solver, solver, do_force_dry_run=true);
-LPNLP_BASBLib_res = benchmark_BASBLib(; example_ids=convert_to_id_list(LPNLP_BASBLib, BASBLib.examples), init_solver, solver, do_force_dry_run=true);
-QPNLP_BASBLib_res = benchmark_BASBLib(; example_ids=convert_to_id_list(QPNLP_BASBLib, BASBLib.examples), init_solver, solver, do_force_dry_run=true);
+example_ids =
+    [
+        convert_to_id_list(LPLP_BASBLib, BASBLib.examples)
+        convert_to_id_list(LPQP_BASBLib, BASBLib.examples)
+        convert_to_id_list(QPQP_BASBlib, BASBLib.examples)
+        convert_to_id_list(LPNLP_BASBLib, BASBLib.examples)
+        convert_to_id_list(QPNLP_BASBLib, BASBLib.examples)
+    ]
+BASBLib_res = benchmark_BASBLib(; example_ids, init_solver, solver, do_force_dry_run=true);
 
 res = [
-    LPLP_BOLIB_p1_res
-    LPLP_BASBLib_res
-    LPLP_BOLIB_p2_res
-    LPQP_BOLIB_p1_res
-    LPQP_BASBLib_res
-    LPQP_BOLIB_p2_res
-    QPQP_BOLIB_p1_res
-    QPQP_BASBlib_res
-    QPQP_BOLIB_p2_res
-    LPNLP_BOLIB_p1_res
-    LPNLP_BASBLib_res
-    LPNLP_BOLIB_p2_res
-    QPNLP_BOLIB_p1_res
-    QPNLP_BASBLib_res
-    QPNLP_BOLIB_p2_res
-    others_BOLIB_p2_res
+    BOLIB_res
+    BASBLib_res
 ]
 
 CSV.write("BOLIB_BASBLib_ipopt.csv", res)

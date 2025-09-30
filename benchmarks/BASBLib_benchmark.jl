@@ -60,13 +60,13 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
 
     success_elapsed_arr = elapsed_arr[success_arr]
     success_count = length(findall(success_arr))
-    if verbosity > 0
-        print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
-        print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
-        if !isempty(success_elapsed_arr)
-            print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
-        end
+    #if verbosity > 0
+    print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
+    print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
+    if !isempty(success_elapsed_arr)
+        print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
     end
+    #end
 
     df = vcat(dataframes...)
     date_time = Dates.format(now(), "yyyy-mm-dd_HHMM")
@@ -100,7 +100,7 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
         if is_cost_optimal
             rating = "optimal"
         else
-            rating = "NOT optimal"
+            rating = "suboptimal"
         end
 
         is_xy_optimal = isapprox(x, prob.xy_optimal; atol=tol)
