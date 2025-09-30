@@ -546,7 +546,8 @@ function check_nlp_sol(x, λ, n, m, gl, g!, ∇ₓf!, ∇ₓg_size, ∇ₓg_rows
         r = rank(C)
         if n - r > 0
             Z = V[:, r+1:n] # 2025-09-29 this was n-r+1 but should be r+1:n corresponding to zero eigenvalues
-            min_eig = eigmin(Z' * ∇²ₓL * Z)
+            min_eig = minimum(real(eigvals(Z' * ∇²ₓL * Z))) #eigmin(Z' * ∇²ₓL * Z) sometimes very small complex value appear which we drop
+         
         elseif n - r == 0 # no feasible directions exist
             is_sufficient = true
         end

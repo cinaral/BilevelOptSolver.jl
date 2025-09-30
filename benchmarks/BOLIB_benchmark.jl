@@ -46,7 +46,7 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         end
 
         Ff = [bop.F(x); bop.f(x)]
-        rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=rating_tol)
+        rating, Ff_optimal, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=rating_tol)
 
 
         info = "$rating ($status $worst_fol_cond $worst_sbop_cond), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(x_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
@@ -54,8 +54,7 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
         if verbosity > 0
             print(info)
         end
-
-        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Status" => status, "folcond" => worst_fol_cond, "sbopcond" => worst_sbop_cond, "is_sol_valid" => is_sol_valid, "Iterations" => iter_count, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Status" => status, "folcond" => worst_fol_cond, "sbopcond" => worst_sbop_cond, "is_sol_valid" => is_sol_valid, "Iterations" => iter_count, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Rating" => rating, "F" => round(Ff[1], sigdigits=3), "F*" => round(Ff_optimal[1], sigdigits=3), "f" => round(Ff[2], sigdigits=3), "f*" => round(Ff_optimal[2], sigdigits=3), "x_init" => Ref(round.(x_init, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)))]
 
         push!(success_arr, is_sol_valid)
         push!(elapsed_arr, elapsed_time)
@@ -63,11 +62,12 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
 
     success_elapsed_arr = elapsed_arr[success_arr]
     success_count = length(findall(success_arr))
-
-    print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
-    print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
-    if !isempty(success_elapsed_arr)
-        print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
+    if verbosity > 0
+        print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
+        print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
+        if !isempty(success_elapsed_arr)
+            print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
+        end
     end
 
     df = vcat(dataframes...)
@@ -93,11 +93,13 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
     prob = getfield(Main.BOLIB, Symbol(name))()
     success = false
     rating = ""
-    x_optimal = []
+    x_optimal = fill(NaN, length(x))
 
     if prob.Ff_optimal[3] == 0 # star means optimal
         rating = "no reference"
+        Ff_optimal = [NaN; NaN]
     else
+        Ff_optimal = prob.Ff_optimal[1:2]
         is_cost_optimal = isapprox(Ff, prob.Ff_optimal[1:2]; rtol=tol)
         if prob.Ff_optimal[3] == 1 # star means optimal
             if is_cost_optimal
@@ -114,9 +116,9 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         end
     end
 
-    if name == "MitsosBarton2006Ex31"
-        x_optimal = 1.0
-    elseif name == "MitsosBarton2006Ex32" # no sol
+    #if name == "MitsosBarton2006Ex31"
+    #    x_optimal = 1.0
+    if name == "MitsosBarton2006Ex32" # no sol
     elseif name == "ClarkWesterberg1988"
         x_optimal = [19.0; 14.0]
     elseif name == "LiuHart1994"
@@ -131,8 +133,8 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         x_optimal = [5.0; 4; 2]
     elseif name == "BardFalk1982Ex2"
         x_optimal = [2.0; 0; 1.5; 0]
-    elseif name == "MitsosBarton2006Ex34"
-        x_optimal = -1
+    #elseif name == "MitsosBarton2006Ex34"
+    #    x_optimal = -1
     elseif name == "Bard1991Ex1"
         x_optimal = [2.0; 6; 0]
     elseif name == "AiyoshiShimizu1984Ex2" # multiple sols
@@ -165,10 +167,10 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         x_optimal = [0.707; 0.707; 0; 1]
     elseif name == "Bard1988Ex2"
         x_optimal = [7.0; 3; 12; 18; 0; 10; 30; 0]
-    elseif name == "MitsosBarton2006Ex35"
-        x_optimal = 0.5
-    elseif name == "MitsosBarton2006Ex36"
-        x_optimal = -1.0
+    #elseif name == "MitsosBarton2006Ex35"
+    #    x_optimal = 0.5
+    #elseif name == "MitsosBarton2006Ex36"
+    #    x_optimal = -1.0
     elseif name == "MitsosBarton2006Ex310" # multiple sols
         x_optimal = [0.1; 0.5]
     elseif name == "MitsosBarton2006Ex313"
@@ -257,7 +259,7 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         rating = rating * " (optimal x)"
     end
 
-    (; rating, x_optimal)
+    (; rating, Ff_optimal, x_optimal)
 end
 
 function gen_x_init(name, rng)

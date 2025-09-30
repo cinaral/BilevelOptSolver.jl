@@ -45,7 +45,7 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
         end
 
         Ff = [bop.F(x); bop.f(x)]
-        rating = rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=rating_tol)
+        rating, Ff_optimal = rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=rating_tol)
 
         info = "$rating ($status $worst_fol_cond $worst_sbop_cond), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(prob.xy_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
 
@@ -53,18 +53,19 @@ function benchmark_BASBLib(; example_ids=1:length(BASBLib.examples), verbosity=0
             print(info)
         end
 
-        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Status" => status, "folcond" => worst_fol_cond, "sbopcond" => worst_sbop_cond, "is_sol_valid" => is_sol_valid, "Iterations" => iter_count, "Solve time (s)" => round.(elapsed_time, sigdigits=3),  "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(prob.xy_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Status" => status, "folcond" => worst_fol_cond, "sbopcond" => worst_sbop_cond, "is_sol_valid" => is_sol_valid, "Iterations" => iter_count, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Rating" => rating, "F" => round(Ff[1], sigdigits=3), "F*" => round(Ff_optimal[1], sigdigits=3), "f" => round(Ff[2], sigdigits=3), "f*" => round(Ff_optimal[2], sigdigits=3), "x_init" => Ref(round.(x_init, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(prob.xy_optimal, sigdigits=3)))]
         push!(success_arr, is_sol_valid)
         push!(elapsed_arr, elapsed_time)
     end
 
     success_elapsed_arr = elapsed_arr[success_arr]
     success_count = length(findall(success_arr))
-
-    print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
-    print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
-    if !isempty(success_elapsed_arr)
-        print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
+    if verbosity > 0
+        print("Out of $(prob_count) problems, $(success_count) ($(round((success_count/prob_count*100),sigdigits=3))%) were successful.\n")
+        print("Elapsed min-max: $(round(minimum(elapsed_arr),sigdigits=2))-$(round(maximum(elapsed_arr),sigdigits=2)) s, median: $(round(median(elapsed_arr),sigdigits=2)) s, mean: $(round(mean(elapsed_arr),sigdigits=2)) s\n")
+        if !isempty(success_elapsed_arr)
+            print("Elapsed successful min-max: $(round(minimum(success_elapsed_arr),sigdigits=2))-$(round(maximum(success_elapsed_arr),sigdigits=2)) s, median: $(round(median(success_elapsed_arr),sigdigits=2)) s, mean: $(round(mean(success_elapsed_arr),sigdigits=2))\n")
+        end
     end
 
     df = vcat(dataframes...)
@@ -92,7 +93,9 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
 
     if isempty(prob.Ff_optimal)
         rating = "no reference"
+        Ff_optimal = [NaN; NaN]
     else
+        Ff_optimal = prob.Ff_optimal
         is_cost_optimal = isapprox(Ff, prob.Ff_optimal; rtol=tol)
         if is_cost_optimal
             rating = "optimal"
@@ -104,7 +107,7 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
 
         # if xy is optimal and sol valid success by default
         if is_xy_optimal
-             rating = rating * " (optimal x)"
+            rating = rating * " (optimal x)"
         end
     end
 
@@ -139,7 +142,7 @@ function rate_BASBLib_result(name, x, Ff, is_sol_valid; tol=1e-7)
     #    end
     #end
 
-    rating
+    (; rating, Ff_optimal)
 end
 
 function gen_x_init(name, rng)

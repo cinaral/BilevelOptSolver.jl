@@ -12,7 +12,7 @@ julia> include("examples/BOLIB_examples.jl")
 julia> (; info, Ff, is_sol_valid, x, λ, iter_count, status, elapsed_time, bop, syms) = solve_BOLIB_prob(name="AiyoshiShimizu1984Ex2", verbosity=5);
 ```
 """
-function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", x_init = [], tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true, max_rand_restart_ct=10, do_force_toggle=false, rating_tol=1e-3)
+function solve_BOLIB_prob(; name="AiyoshiShimizu1984Ex2", x_init = [], tol=1e-7, verbosity=5, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=3, do_force_hp_init=false, do_check_x_agreem=true, max_rand_restart_ct=10, rating_tol=1e-3)
     prob = getfield(Main.BOLIB, Symbol(name))()
     bop, syms = construct_bop(prob.n1, prob.n2, prob.F, prob.G, prob.f, prob.g; verbosity=0, np=0)
 
