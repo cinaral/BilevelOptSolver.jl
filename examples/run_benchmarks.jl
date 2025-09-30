@@ -1,7 +1,7 @@
 using CSV
 
-init_solver = "IPOPT"
-solver = "IPOPT"
+init_solver = "PATH"
+solver = "PATH"
 
 # you could simply use these instead, but this example is in the paper table order...
 #include("../benchmarks/BASBLib_benchmark.jl")
@@ -215,9 +215,10 @@ b_1998_02
 b_1998_03
 b_1998_07
 as_1981_01"
-LPNLP_BASBLib = "mb_2007_13v
-gf_2001_01
-cg_1999_01"
+LPNLP_BASBLib = "gf_2001_01
+cg_1999_01
+mb_2007_13v
+"
 QPNLP_BASBLib = "mb_2007_18v
 mb_2007_22"
 example_ids =
@@ -235,4 +236,4 @@ res = [
     BASBLib_res
 ]
 
-CSV.write("BOLIB_BASBLib_ipopt.csv", res)
+CSV.write("BOLIB_BASBLib_path.csv", res)

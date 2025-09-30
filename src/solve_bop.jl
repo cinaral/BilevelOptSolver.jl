@@ -322,7 +322,7 @@ function solve_bop(bop; x_init=zeros(bop.nx), param=Float64[], tol=1e-6, fol_fea
                 worst_sbop_cond = minimum(sbop_cond_arr)
             end
 
-            if worst_fol_cond > 2 && worst_sbop_cond > 1
+            if worst_fol_cond > 1 && worst_sbop_cond > 1
                 is_sol_valid = true
             end
 
