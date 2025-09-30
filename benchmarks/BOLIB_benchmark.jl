@@ -16,7 +16,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_require_strict_min=true, do_check_x_agreem=true,  do_force_toggle=false,  max_rand_restart_ct=0, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_check_x_agreem=true, max_rand_restart_ct=0, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
@@ -38,29 +38,26 @@ function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, to
 
         # dry run for @elapsed...
         if do_force_dry_run
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct)
+            is_sol_valid, x, λ, iter_count, status, worst_fol_cond, worst_sbop_cond = solve_bop(bop; x_init=prob.xy_init, verbosity=0, tol, init_solver, solver, max_iter=2, conv_dv_len, do_force_hp_init, do_check_x_agreem, max_rand_restart_ct)
         end
 
         elapsed_time = @elapsed begin
-            is_sol_valid, x, λ, iter_count, status = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_require_strict_min, do_check_x_agreem, do_force_toggle, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
+            is_sol_valid, x, λ, iter_count, status, worst_fol_cond, worst_sbop_cond = solve_bop(bop; x_init, verbosity, tol, init_solver, solver, max_iter, conv_dv_len, do_force_hp_init, do_check_x_agreem, max_rand_restart_ct, x_init_min=fill(-10.0, bop.nx), x_init_max=fill(10.0, bop.nx))
         end
 
         Ff = [bop.F(x); bop.f(x)]
-        success, rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=rating_tol)
+        rating, x_optimal = rate_BOLIB_result(name, x, Ff, is_sol_valid; tol=rating_tol)
 
-        if success
-            info_status = "success"
-        else
-            info_status = "FAIL"
-        end
-        info = "$info_status: $rating ($status), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(x_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
+
+        info = "$rating ($status $worst_fol_cond $worst_sbop_cond), $iter_count iters ($(round(elapsed_time, sigdigits=5)) s), x = $(round.(x, sigdigits=5)), Ff = $(round.(Ff, sigdigits=5)) (x* = $(round.(x_optimal, sigdigits=5)), Ff* = $(round.(prob.Ff_optimal, sigdigits=5)))\n"
 
         if verbosity > 0
             print(info)
         end
 
-        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Iterations" => iter_count, "Status" => status, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Success" => success, "is_sol_valid" => is_sol_valid, "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
-        push!(success_arr, success)
+        dataframes = [dataframes; DataFrame("name" => name, "n1" => bop.n1, "n2" => bop.n2, "m1" => bop.m1, "m2" => bop.m2, "Status" => status, "folcond" => worst_fol_cond, "sbopcond" => worst_sbop_cond, "is_sol_valid" => is_sol_valid, "Iterations" => iter_count, "Solve time (s)" => round.(elapsed_time, sigdigits=3), "Rating" => rating, "Ff" => Ref(round.(Ff, sigdigits=3)), "Ff*" => Ref(round.(prob.Ff_optimal, sigdigits=3)), "x" => Ref(round.(x, sigdigits=3)), "x*" => Ref(round.(x_optimal, sigdigits=3)), "x_init" => Ref(round.(x_init, sigdigits=3)))]
+
+        push!(success_arr, is_sol_valid)
         push!(elapsed_arr, elapsed_time)
     end
 
@@ -117,350 +114,150 @@ function rate_BOLIB_result(name, x, Ff, is_sol_valid; tol)
         end
     end
 
-    # if optimal we consider a success 
-    if rating == "optimal" || rating == "optimal (known)"
-        success = true
-
-        if !is_sol_valid
-            @info "couldn't verify valid sol but the result is optimal"
-        end
-    end
-
     if name == "MitsosBarton2006Ex31"
         x_optimal = 1.0
-        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex32" # no sol
-        if !is_sol_valid
-            success = true
-        end
     elseif name == "ClarkWesterberg1988"
         x_optimal = [19.0; 14.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "LiuHart1994"
         x_optimal = [4.0; 4.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Bard1984a"
         x_optimal = [0.8889; 2.222]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "AnandalinghamWhite1990" # multiple sols
         x_optimal = [16.0; 11.0]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [12.0; 3]; atol=tol) || isapprox(x, [0.0; 5]; atol=tol))
-            success = true
-        end
     elseif name == "Bard1991Ex2"
         x_optimal = [0.0; 0.0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "ClarkWesterberg1990b" # multiple sols
         x_optimal = [5.0; 4; 2]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [6.0; 4; 6]; atol=tol) || isapprox(x, [2.0; 4; 4]; atol=tol))
-            success = true
-        end
     elseif name == "BardFalk1982Ex2"
         x_optimal = [2.0; 0; 1.5; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex34"
         x_optimal = -1
-        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Bard1991Ex1"
         x_optimal = [2.0; 6; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "AiyoshiShimizu1984Ex2" # multiple sols
         x_optimal = [0.0; 0; -10; -10]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [0.0; 30; -10; -10]; atol=tol))
-            success = true
-        end
     elseif name == "CandlerTownsley1982" # multiple sols
         x_optimal = [0.0; 0.9; 0; 0.6; 0.4]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [0.5; 0.5; 0; 0; 0]; atol=tol))
-            success = true
-        end
     elseif name == "LucchettiEtal1987"
         x_optimal = [1.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Yezza1996Ex31"
         x_optimal = [0.25; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Dempe1992b"
         x_optimal = [1.0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "ClarkWesterberg1990a" # multiple sols
         x_optimal = [1.0; 3]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [3.0; 5]; atol=tol) || isapprox(x, [4.4; 4.8]; atol=tol))
-            success = true
-        end
     elseif name == "TuyEtal2007" # 2025-08-27 TODO check
         x_optimal = [1.5; 1.5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Bard1988Ex1"
         x_optimal = [1.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "ShimizuAiyoshi1981Ex1"
         x_optimal = [10.0; 10.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "DeSilva1978"
         x_optimal = [0.5; 0.5; 0.5; 0.5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "FalkLiu1995"
         x_optimal = [0.866; 0.866; 0.866; 0.866]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "ShimizuAiyoshi1981Ex2" # multiple sols
         x_optimal = [0.0; 0; -10; -10]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [20.0; 5; 10; 5]; atol=tol))
-            success = true
-        end
     elseif name == "Bard1988Ex3"
         x_optimal = [0.0; 2; 1.875; 0.896]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "DempeDutta2012Ex31"
         x_optimal = [0.707; 0.707; 0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Bard1988Ex2"
         x_optimal = [7.0; 3; 12; 18; 0; 10; 30; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex35"
         x_optimal = 0.5
-        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex36"
         x_optimal = -1.0
-        if is_sol_valid && isapprox(x[2], x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex310" # multiple sols
         x_optimal = [0.1; 0.5]
-        if is_sol_valid && 0.1 - tol < x[1] ≤ 1.0 + tol && isapprox(x[2], 0.5; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex313"
         x_optimal = [0.0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex315"
         x_optimal = [-1.0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex316" # multiple sols
         x_optimal = [0.0; 1]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [-0.5; -1]; atol=tol))
-            success = true
-        end
     elseif name == "KleniatiAdjiman2014Ex3"
         x_optimal = [0.0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex39"
         x_optimal = [-1.0; -1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "NieEtal2017Ex34"
         x_optimal = [2.0; 0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "GumusFloudas2001Ex5"
         x_optimal = [0.1936; 9.967; 10]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "GumusFloudas2001Ex3"
         x_optimal = [0.0; 0.9; 0; 0.6; 0.4]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex312"
         x_optimal = [0.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex314"
         x_optimal = [0.25; 0.5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex317" # multiple sols
         x_optimal = [-0.25; 0.5]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [-0.25; -0.5]; atol=tol))
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex318" # 2025-08-27 TODO: check this
         x_optimal = [1.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex319" # 2025-08-27 TODO: check this
         x_optimal = [0.189; 0.4343]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex320"
         x_optimal = [0.5; 0.5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex321"
         x_optimal = [-0.5545; 0.4554]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex324"
         x_optimal = [0.2106; 1.799]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex322"
         x_optimal = [-0.5545; 0.4554]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "DempeDutta2012Ex24" # 2025-08-27 TODO: check this
         x_optimal = [1.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "ShimizuEtal1997b"
         x_optimal = [11.25; 5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "YeZhu2010Ex42"
         x_optimal = [1.0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex38"
         x_optimal = [-0.567; 0.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Colson2002BIPA2"
         x_optimal = [1.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Colson2002BIPA4"
         x_optimal = [0; 0.579]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Colson2002BIPA1"
         x_optimal = [6.082; 4.487]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Colson2002BIPA3"
         x_optimal = [4.0; 0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "Colson2002BIPA5"
         x_optimal = [1.941; 0.0; 1.211]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "FloudasZlobec1998"
         x_optimal = [1.0; 0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "MitsosBarton2006Ex326" # multiple sols
         x_optimal = [-1.0; -1; 1; 1; -0.707]
-        if is_sol_valid && (isapprox(x, x_optimal; atol=tol) || isapprox(x, [-1.0; -1; 1; -1; -0.707]; atol=tol))
-            success = true
-        end
     elseif name == "NieWangYe2017Ex52"
         x_optimal = [-1.0; -1.0; 1.097; 0.3143; -0.8284]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "NieWangYe2017Ex57"
         x_optimal = [1.0; 1; 0; 0; 1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "NieWangYe2017Ex54"
         x_optimal = [0.0; 0; -0.707; -0.707; 0.618; 0; -0.558; -0.554]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "NieWangYe2017Ex58"
         x_optimal = [0.544; 0.468; 0.490; 0.495; -0.783; -0.501; -0.288; -0.184]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "KleniatiAdjiman2014Ex4"
         x_optimal = [1.0; -1; -1; -1; -1; -1; -1; -1; -1; -1]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "AllendeStill2013"
         x_optimal = [0.5; 0.5; 0.5; 0.5]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "AnEtal2009"
         x_optimal = [0.200001; 1.999997; 3.999998; 4.600005]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "BardBook1998"
         x_optimal = [25.0; 30; 5; 10]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     elseif name == "CalamaiVicente1994a"
         x_optimal = [1.0; 0.0]
-        if is_sol_valid && isapprox(x, x_optimal; atol=tol)
-            success = true
-        end
     else # assuming success if it's a local sol
         is_sol_valid
         success = true
     end
 
-    (; success, rating, x_optimal)
+    is_x_optimal = isapprox(x, x_optimal; atol=tol)
+
+    # if xy is optimal and sol valid success by default
+    if is_x_optimal
+        rating = rating * " (optimal x)"
+    end
+
+    (; rating, x_optimal)
 end
 
 function gen_x_init(name, rng)
