@@ -6,8 +6,10 @@ solver = "PATH"
 # you could simply use these instead, but this example is in the paper table order...
 #include("../benchmarks/BASBLib_benchmark.jl")
 #res = benchmark_BASBLib(; init_solver, solver);
+#CSV.write("BASBLib_" * solver * ".csv", res)
 #include("../benchmarks/BOLIB_benchmark.jl")
-#res = benchmark_BOLIB(; init_solver, solver;
+#res = benchmark_BOLIB(; init_solver, solver);
+#CSV.write("BOLIB_" * solver * ".csv", res)
 
 function split_list(list)
     items = split(strip(list), '\n')

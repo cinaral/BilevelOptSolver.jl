@@ -16,7 +16,7 @@ julia> include("benchmarks/BOLIB_benchmark.jl")
 julia> df = benchmark_BOLIB(example_ids=1:165);
 ```
 """
-function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_check_x_agreem=true, max_rand_restart_ct=0, rng=MersenneTwister(), do_force_dry_run=false, rating_tol=1e-3)
+function benchmark_BOLIB(; example_ids=1:length(BOLIB.examples), verbosity=0, tol=1e-7, init_solver="IPOPT", solver="IPOPT", max_iter=50, conv_dv_len=1, do_force_hp_init=false, do_check_x_agreem=true, max_rand_restart_ct=10, rng=MersenneTwister(), do_force_dry_run=true, rating_tol=1e-3)
     dataframes = []
     success_arr = Bool[]
     elapsed_arr = Float64[]
