@@ -202,8 +202,8 @@ P1_CI = [get_CI(P1_benchs.N10.times); get_CI(P1_benchs.N20.times); get_CI(P1_ben
 
 P2_CI = [get_CI(P2_benchs.N10.times); get_CI(P2_benchs.N20.times); get_CI(P2_benchs.N30.times); get_CI(P2_benchs.N40.times); get_CI(P2_benchs.N50.times); get_CI(P2_benchs.N60.times); get_CI(P2_benchs.N70.times); get_CI(P2_benchs.N80.times); get_CI(P2_benchs.N90.times); get_CI(P2_benchs.N100.times)] ./ 1e9
 
-plot(10:10:100, P1_means,  yerror = P1_CI, seriestype = :line, size=(500, 350), label="Mean ± CI", xlabel="N", ylabel="Median " * L"t_c" * " (ms)", yaxis=(formatter = y -> round(y*1e3; sigdigits=4)), legend=false)
+plot(10:10:100, P1_means,  yerror = P1_CI, seriestype = :line, size=(500, 250), label="Mean ± CI", xlabel="N", ylabel="Mean " * L"t_c" * " (ms) ± CI (95%)", yaxis=(formatter = y -> round(y*1e3; sigdigits=4)), legend=false)
 savefig("./output/RobustPorfolioP1_scaling.pdf")
 
-plot(10:10:100, P2_means,  yerror = P2_CI, seriestype = :line, size=(500, 350), label="Mean ± CI", xlabel="N", ylabel="Median " * L"t_c" * " (ms)", yaxis=(formatter = y -> round(y*1e3; sigdigits=4)), legend=false)
+plot(10:10:100, P2_means,  yerror = P2_CI, seriestype = :line, size=(500, 250), label="Mean ± CI", xlabel="N", ylabel="Mean " * L"t_c" * " (s) ± CI (95%)", yaxis=(formatter = y -> round(y; sigdigits=4)), legend=false)
 savefig("./output/RobustPorfolioP2_scaling.pdf")
